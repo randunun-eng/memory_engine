@@ -12,6 +12,9 @@ Entries are append-only. Once resolved, the entry stays with its resolution note
 | 2026-04-16 | retrieval/phase1 | `emit_trace_async` task retention set was local variable (GC could collect tasks mid-execution); fixed to module-level `_background_tasks` set; also changed from `async def` to `def` since it was never awaited | Bug fix — the original pattern created `_background_tasks: set` inside the function body, so it went out of scope on return and the task strong reference was lost; under load traces would silently vanish | Resolved |
 | 2026-04-16 | retrieval/phase1 | Production-realistic p99=131ms (6x headroom to 800ms budget) — two caveats: (1) Phase 2 consolidator shares CPU with query embedder; concurrent embedding will spike latency unless run_in_executor separates them, (2) grounding gate triggers internal recall calls not present in Phase 1 load; re-measure at Phase 2 close with consolidator running | Documented as baseline caveat — not a divergence, just honest context for the 6x headroom claim | Open |
 | 2026-04-16 | retrieval/phase1 | BM25 and query embedding could run concurrently (no data dependency until fusion step) but currently run sequentially; ~10ms async overhead in the pipeline | Phase 6+ optimization opportunity — don't act now, but the lever is asyncio.gather(bm25_search, embed_query) joining at RRF | Open |
+| 2026-04-16 | grounding/phase2 | Grounding gate accuracy: 72% on 50 hand-labeled fixtures (TP=23, TN=13, FP=7, FN=7), threshold=0.40, embed=bag-of-words (not MiniLM). FP cluster: specificity inflation where word overlap is high but meaning was changed (u01, u06, u07, u08, u13, u15, u19). FN cluster: valid paraphrases with low word overlap. Real embeddings should improve both. | Baseline measurement — re-measure at Phase 7 with MiniLM and real LLM judge enabled | Open |
+| 2026-04-16 | consolidator/phase2 | Contradiction check runs the LLM judge twice for the same overlapping neuron pair (once pre-insert for detection, once post-insert for supersession) — doubles LLM cost for contradiction cases | Phase 6 optimization: cache first check result or restructure to single-pass | Open |
+| 2026-04-16 | consolidator/phase2 | LLM model pinned to `ollama/llama3.1:8b` in PolicyDispatch default. Changing the model requires re-measuring grounding accuracy because different models have different extraction and grounding characteristics. The 72% baseline was measured without an LLM judge (similarity-only). | Pin documented in config.py — changing model is a re-measurement event | Open |
 
 ## Conventions
 
@@ -28,6 +31,30 @@ Entries are append-only. Once resolved, the entry stays with its resolution note
 At sustained 100 QPS this becomes 100 rebuilds/s. At 100k+ neurons the rebuild time will be linear and start to matter. The cache isn't warm across queries — IDF tables and tokenized corpus are recomputed each time.
 
 Deferred to Phase 6 (observability/operational hardening). The fix is a per-persona memoized BM25 index that invalidates on neuron insert/supersede/prune events.
+
+### 2026-04-16: Grounding gate accuracy baseline (grounding.py)
+
+**Measurement:** 72% accuracy on 50 hand-labeled fixtures using bag-of-words embeddings (not real MiniLM) and similarity-only gate (LLM judge disabled), threshold=0.40.
+
+**Breakdown:** TP=23, TN=13, FP=7, FN=7. Precision=76.7%, Recall=76.7%.
+
+**FP cluster (7 false positives — ungrounded candidates accepted):** All are specificity-inflation cases where the candidate shares most words with the source but adds fabricated details. Bag-of-words embedding doesn't distinguish "works at Google as engineer" from "works at Google as senior engineer earning $200k" because the added words don't dominate the similarity. Real MiniLM embeddings should partially address this, but the LLM judge is the proper fix — it reasons about whether new information was introduced.
+
+**FN cluster (7 false negatives — grounded candidates rejected):** Valid paraphrases where word choice diverged enough from the source. E.g., "relocated" vs "moved to" — different stems, low bag-of-words overlap. Real embeddings handle this well.
+
+**Threshold sensitivity:** 0.40 is the current default. Lowering to 0.30 would reduce FN but increase FP. With real embeddings, 0.40 should be a better balance. Re-measure at Phase 7 with MiniLM and LLM judge enabled.
+
+### 2026-04-16: Double contradiction check (consolidator.py)
+
+The consolidator runs `find_overlapping_neurons` + `check_contradiction` twice for the same neuron pair: once before inserting the new neuron (to detect contradictions) and once after (to execute supersession). The pre-insert check result is not cached or passed through, so the LLM judge is called twice for the same pair.
+
+At Phase 2 volumes (mock LLM, single-user) this is imperceptible. Under real LLM load, contradiction cases will cost 2x. Fix is to cache the first check result keyed on (existing_id, candidate_content_hash) and reuse at supersession time. Deferred to Phase 6.
+
+### 2026-04-16: LLM model pin (policy/dispatch.py, config.py)
+
+Model pinned to `ollama/llama3.1:8b` as the default in PolicyDispatch. The 72% grounding accuracy baseline was measured without an LLM judge — changing the model (even within the Llama family) requires re-measuring because extraction quality and grounding judge behavior are model-dependent.
+
+The pin lives in dispatch.py as a default parameter and in config.py as the broader embeddings.model setting. Changing either is a re-measurement event: run `tests/eval/test_grounding_accuracy.py` and update this DRIFT entry with the new numbers.
 
 ## Resolved entries
 

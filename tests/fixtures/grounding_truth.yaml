@@ -1,0 +1,327 @@
+# 50 hand-labeled grounding truth fixtures for Phase 2 accuracy measurement.
+#
+# Each entry has:
+#   event_text: the raw message text (the source event)
+#   candidate: the extracted claim to evaluate
+#   grounded: true/false — whether the grounding gate should accept this candidate
+#   reason: human explanation of why it's grounded or ungrounded
+#
+# Labels are conservative: "grounded" means a reasonable reader would conclude
+# the claim from the event text. "ungrounded" means the claim introduces
+# information not present, paraphrases in a meaning-changing way, or fabricates
+# specifics the source doesn't state.
+#
+# Fixture set covers:
+#   - 30 grounded (60%): straightforward extractions, paraphrases, implied facts
+#   - 20 ungrounded (40%): hallucinations, specificity inflation, temporal fabrication,
+#     opinion-as-fact, cross-source conflation
+#
+# Created: 2026-04-16
+# Author: hand-labeled for Phase 2 grounding gate evaluation
+
+---
+
+# ---- GROUNDED (30 entries) ----
+
+- id: g01
+  event_text: "I just started working at Google as a software engineer last month."
+  candidate: "The speaker works at Google as a software engineer."
+  grounded: true
+  reason: "Direct extraction of stated fact."
+
+- id: g02
+  event_text: "My birthday is on March 15th, same as my dad's."
+  candidate: "The speaker's birthday is March 15th."
+  grounded: true
+  reason: "Explicitly stated date."
+
+- id: g03
+  event_text: "We moved to Colombo from Kandy about three years ago."
+  candidate: "The speaker relocated from Kandy to Colombo."
+  grounded: true
+  reason: "Direct extraction, 'moved to X from Y' is clear."
+
+- id: g04
+  event_text: "I'm allergic to peanuts, found out the hard way at age 12."
+  candidate: "The speaker has a peanut allergy."
+  grounded: true
+  reason: "Explicitly stated medical fact."
+
+- id: g05
+  event_text: "Our team uses Python 3.12 and PostgreSQL for the backend."
+  candidate: "The team's backend stack includes Python 3.12 and PostgreSQL."
+  grounded: true
+  reason: "Direct restatement of technical fact."
+
+- id: g06
+  event_text: "I've been learning Rust on weekends for the past 6 months."
+  candidate: "The speaker has been studying Rust in their spare time."
+  grounded: true
+  reason: "Paraphrase preserving meaning."
+
+- id: g07
+  event_text: "The meeting is scheduled for Thursday at 2pm Sri Lanka time."
+  candidate: "A meeting is scheduled for Thursday at 2pm SLT."
+  grounded: true
+  reason: "Direct extraction of scheduled event."
+
+- id: g08
+  event_text: "Alex mentioned he's switching to the product team next quarter."
+  candidate: "Alex plans to move to the product team next quarter."
+  grounded: true
+  reason: "Reported speech accurately captured."
+
+- id: g09
+  event_text: "We signed the contract with Acme Corp yesterday for $50k."
+  candidate: "A contract was signed with Acme Corp for $50,000."
+  grounded: true
+  reason: "Direct extraction of business event."
+
+- id: g10
+  event_text: "I prefer vim over VS Code, been using it since university."
+  candidate: "The speaker prefers vim and has used it since university."
+  grounded: true
+  reason: "Stated preference with timeframe."
+
+- id: g11
+  event_text: "The solar panel array on the roof generates about 5kW peak."
+  candidate: "The rooftop solar array has approximately 5kW peak capacity."
+  grounded: true
+  reason: "Technical spec directly stated."
+
+- id: g12
+  event_text: "Priya said she'll be on leave from the 20th to the 25th."
+  candidate: "Priya has leave scheduled from the 20th to the 25th."
+  grounded: true
+  reason: "Reported future plan, accurately extracted."
+
+- id: g13
+  event_text: "Our MPPT controller uses the Perturb and Observe algorithm."
+  candidate: "The MPPT controller implements Perturb and Observe."
+  grounded: true
+  reason: "Technical fact directly stated."
+
+- id: g14
+  event_text: "I graduated from University of Moratuwa in 2020 with a CS degree."
+  candidate: "The speaker has a CS degree from University of Moratuwa, class of 2020."
+  grounded: true
+  reason: "Educational fact with year, directly stated."
+
+- id: g15
+  event_text: "The API latency spiked to 800ms during the deploy yesterday."
+  candidate: "An API latency spike to 800ms occurred during a recent deployment."
+  grounded: true
+  reason: "Operational fact with specific measurement."
+
+- id: g16
+  event_text: "We use WhatsApp for most client communication."
+  candidate: "WhatsApp is the primary client communication channel."
+  grounded: true
+  reason: "'most' maps to 'primary' — meaning-preserving paraphrase."
+
+- id: g17
+  event_text: "The office is in Bambalapitiya, right next to the train station."
+  candidate: "The office is located in Bambalapitiya near the train station."
+  grounded: true
+  reason: "Location fact directly stated."
+
+- id: g18
+  event_text: "I run 5K every morning before work."
+  candidate: "The speaker runs 5 kilometers daily before work."
+  grounded: true
+  reason: "Routine/habit directly stated."
+
+- id: g19
+  event_text: "Our company has about 30 employees, mostly engineers."
+  candidate: "The company has approximately 30 employees, predominantly engineers."
+  grounded: true
+  reason: "Company size and composition stated."
+
+- id: g20
+  event_text: "The inverter efficiency is rated at 97.5% under standard conditions."
+  candidate: "The inverter has a 97.5% efficiency rating under standard conditions."
+  grounded: true
+  reason: "Technical specification directly stated."
+
+- id: g21
+  event_text: "I don't eat meat — been vegetarian for about 10 years now."
+  candidate: "The speaker is vegetarian."
+  grounded: true
+  reason: "Dietary preference explicitly stated."
+
+- id: g22
+  event_text: "The project deadline got pushed from April 30 to May 15."
+  candidate: "The project deadline was extended to May 15."
+  grounded: true
+  reason: "Schedule change directly stated."
+
+- id: g23
+  event_text: "Sarah handles all the client-facing demos."
+  candidate: "Sarah is responsible for client demonstrations."
+  grounded: true
+  reason: "Role/responsibility directly stated."
+
+- id: g24
+  event_text: "We're running three test suites: unit, integration, and invariant."
+  candidate: "The project has unit, integration, and invariant test suites."
+  grounded: true
+  reason: "Technical fact directly stated."
+
+- id: g25
+  event_text: "My phone number is +94771234567 if you need to reach me directly."
+  candidate: "The speaker's phone number is +94771234567."
+  grounded: true
+  reason: "PII directly shared."
+
+- id: g26
+  event_text: "The battery bank stores 13.5kWh, same as a Tesla Powerwall."
+  candidate: "The battery bank has 13.5kWh storage capacity."
+  grounded: true
+  reason: "Technical spec explicitly stated."
+
+- id: g27
+  event_text: "I was born in Galle, but grew up in Colombo."
+  candidate: "The speaker was born in Galle."
+  grounded: true
+  reason: "Biographical fact directly stated."
+
+- id: g28
+  event_text: "We switched from MySQL to PostgreSQL about two years ago."
+  candidate: "The team migrated from MySQL to PostgreSQL."
+  grounded: true
+  reason: "Technical decision directly stated."
+
+- id: g29
+  event_text: "Randunu charges $150/hour for consulting work."
+  candidate: "Randunu's consulting rate is $150 per hour."
+  grounded: true
+  reason: "Pricing fact directly stated."
+
+- id: g30
+  event_text: "The quarterly review is always the first Monday of the month."
+  candidate: "Quarterly reviews are held on the first Monday of each month."
+  grounded: true
+  reason: "Recurring schedule directly stated."
+
+
+# ---- UNGROUNDED (20 entries) ----
+
+- id: u01
+  event_text: "I just started working at Google as a software engineer last month."
+  candidate: "The speaker is a senior software engineer at Google earning $200k."
+  grounded: false
+  reason: "Specificity inflation: 'senior' and salary not in source."
+
+- id: u02
+  event_text: "My birthday is on March 15th, same as my dad's."
+  candidate: "The speaker was born on March 15, 1995."
+  grounded: false
+  reason: "Year fabricated — source only states the date, not the year."
+
+- id: u03
+  event_text: "We moved to Colombo from Kandy about three years ago."
+  candidate: "The speaker moved to Colombo in January 2023."
+  grounded: false
+  reason: "Exact date fabricated from 'about three years ago'."
+
+- id: u04
+  event_text: "I think the new framework is probably better than what we had."
+  candidate: "The new framework is better than the previous one."
+  grounded: false
+  reason: "Opinion ('I think', 'probably') presented as established fact."
+
+- id: u05
+  event_text: "Alex mentioned he's switching to the product team next quarter."
+  candidate: "Alex is unhappy with his current engineering role."
+  grounded: false
+  reason: "Motivation inferred — source says nothing about unhappiness."
+
+- id: u06
+  event_text: "The solar panel array on the roof generates about 5kW peak."
+  candidate: "The solar installation cost $15,000 and generates 5kW."
+  grounded: false
+  reason: "Cost fabricated — not mentioned in source."
+
+- id: u07
+  event_text: "Our team uses Python 3.12 and PostgreSQL for the backend."
+  candidate: "The team uses Django with Python 3.12 and PostgreSQL."
+  grounded: false
+  reason: "Django not mentioned — framework fabricated."
+
+- id: u08
+  event_text: "I've been learning Rust on weekends for the past 6 months."
+  candidate: "The speaker is proficient in Rust programming."
+  grounded: false
+  reason: "'Learning' does not imply proficiency."
+
+- id: u09
+  event_text: "Priya said she'll be on leave from the 20th to the 25th."
+  candidate: "Priya is going on vacation to Bali from the 20th to 25th."
+  grounded: false
+  reason: "Destination fabricated — source says 'leave', not 'vacation to Bali'."
+
+- id: u10
+  event_text: "The API latency spiked to 800ms during the deploy yesterday."
+  candidate: "The deployment caused a production outage with 800ms latency."
+  grounded: false
+  reason: "'Latency spike' upgraded to 'outage' — meaning changed."
+
+- id: u11
+  event_text: "I prefer vim over VS Code, been using it since university."
+  candidate: "The speaker dislikes VS Code and refuses to use it."
+  grounded: false
+  reason: "'Prefer X over Y' doesn't mean 'refuses to use Y'."
+
+- id: u12
+  event_text: "The project deadline got pushed from April 30 to May 15."
+  candidate: "The project is behind schedule due to engineering delays."
+  grounded: false
+  reason: "Reason for deadline change fabricated."
+
+- id: u13
+  event_text: "We signed the contract with Acme Corp yesterday for $50k."
+  candidate: "Acme Corp is a long-term strategic partner of the company."
+  grounded: false
+  reason: "Relationship characterization not in source — just a contract signing."
+
+- id: u14
+  event_text: "I graduated from University of Moratuwa in 2020 with a CS degree."
+  candidate: "The speaker graduated top of their class from University of Moratuwa."
+  grounded: false
+  reason: "Academic performance fabricated."
+
+- id: u15
+  event_text: "Our company has about 30 employees, mostly engineers."
+  candidate: "The company has 30 engineers and 5 non-technical staff."
+  grounded: false
+  reason: "Exact breakdown fabricated from 'about 30' and 'mostly'."
+
+- id: u16
+  event_text: "I don't eat meat — been vegetarian for about 10 years now."
+  candidate: "The speaker is vegan for ethical reasons."
+  grounded: false
+  reason: "Vegetarian ≠ vegan, and reasons not stated."
+
+- id: u17
+  event_text: "The battery bank stores 13.5kWh, same as a Tesla Powerwall."
+  candidate: "The system uses a Tesla Powerwall with 13.5kWh capacity."
+  grounded: false
+  reason: "'Same as a Tesla Powerwall' is a comparison, not an assertion of brand."
+
+- id: u18
+  event_text: "We're running three test suites: unit, integration, and invariant."
+  candidate: "The project achieves 95% test coverage across all suites."
+  grounded: false
+  reason: "Coverage number fabricated — source only lists suites."
+
+- id: u19
+  event_text: "Sarah handles all the client-facing demos."
+  candidate: "Sarah is the head of sales and client relations."
+  grounded: false
+  reason: "Job title fabricated from one responsibility."
+
+- id: u20
+  event_text: "The meeting is scheduled for Thursday at 2pm Sri Lanka time."
+  candidate: "The meeting was rescheduled from Wednesday to Thursday."
+  grounded: false
+  reason: "Rescheduling fabricated — source only states when meeting is."

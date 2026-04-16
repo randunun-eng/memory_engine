@@ -31,6 +31,16 @@ class EmbeddingSettings(_SubSettings):
     revision: str = "sbert-minilm-l6-v2-1"
 
 
+class LLMSettings(_SubSettings):
+    # Pinned model for extraction, grounding judge, and contradiction judge.
+    # Changing this model requires re-measuring grounding accuracy:
+    #   uv run pytest tests/eval/test_grounding_accuracy.py --eval -v -s
+    # and updating docs/blueprint/DRIFT.md with the new numbers.
+    # Phase 2 baseline: 72% accuracy on 50 fixtures with similarity-only gate.
+    model: str = "ollama/llama3.1:8b"
+    temperature: float = 0.0
+
+
 class GroundingSettings(_SubSettings):
     similarity_threshold: float = 0.40
     llm_judge_required_for_tiers: list[str] = Field(
@@ -59,6 +69,7 @@ class Settings(BaseSettings):
     backup_recipient: str | None = None
 
     db: DBSettings = Field(default_factory=DBSettings)
+    llm: LLMSettings = Field(default_factory=LLMSettings)
     embeddings: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
     grounding: GroundingSettings = Field(default_factory=GroundingSettings)
     working_memory: WorkingMemorySettings = Field(default_factory=WorkingMemorySettings)

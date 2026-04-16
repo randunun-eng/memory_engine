@@ -396,3 +396,138 @@ async def test_quarantine_receives_rejected_candidates(db) -> None:
 
     candidate_data = json.loads(row["candidate_json"])
     assert candidate_data["content"] == "Fabricated claim with no source"
+
+
+# ---- Decay: exponential activation curve ----
+
+
+async def test_decay_reduces_activation_over_time(db) -> None:
+    """Decay applies exponential half-life to working memory activation.
+
+    Inserts an entry with a backdated entered_at, then runs decay and verifies
+    the activation dropped according to 2^(-elapsed/halflife).
+    """
+    import math
+
+    persona = await make_test_persona(db)
+    event = await _append_test_event(db, persona, "Test event for decay")
+
+    # Insert a working memory entry backdated by 60 minutes
+    await db.execute(
+        """
+        INSERT INTO working_memory (persona_id, event_id, activation, entered_at)
+        VALUES (?, ?, 1.0, datetime('now', '-60 minutes'))
+        """,
+        (persona.id, event.id),
+    )
+    await db.commit()
+
+    from memory_engine.core.consolidator import _decay_working_memory
+
+    half_life = 30  # minutes
+    decayed = await _decay_working_memory(db, persona.id, half_life)
+    assert decayed == 1, f"Expected 1 decayed entry, got {decayed}"
+
+    cursor = await db.execute(
+        "SELECT activation FROM working_memory WHERE persona_id = ?",
+        (persona.id,),
+    )
+    row = await cursor.fetchone()
+    assert row is not None
+
+    # After 60 min with 30-min half-life: activation ≈ 1.0 * 2^(-60/30) = 0.25
+    # Allow tolerance for timing jitter (±5 seconds changes the number slightly)
+    expected = math.pow(2, -60.0 / half_life)
+    assert abs(row["activation"] - expected) < 0.05, (
+        f"Decay result {row['activation']:.4f} not close to expected {expected:.4f}"
+    )
+
+
+async def test_decay_leaves_fresh_entries_unchanged(db) -> None:
+    """Entries just inserted (elapsed ≈ 0) should not be decayed."""
+    persona = await make_test_persona(db)
+    event = await _append_test_event(db, persona, "Fresh event")
+
+    # Insert with default entered_at (now)
+    await db.execute(
+        "INSERT INTO working_memory (persona_id, event_id, activation) VALUES (?, ?, 1.0)",
+        (persona.id, event.id),
+    )
+    await db.commit()
+
+    from memory_engine.core.consolidator import _decay_working_memory
+
+    decayed = await _decay_working_memory(db, persona.id, half_life_minutes=30)
+    assert decayed == 0, "Fresh entry was decayed — should be unchanged"
+
+    cursor = await db.execute(
+        "SELECT activation FROM working_memory WHERE persona_id = ?",
+        (persona.id,),
+    )
+    row = await cursor.fetchone()
+    assert row["activation"] == 1.0
+
+
+# ---- Prune: threshold + capacity enforcement ----
+
+
+async def test_prune_removes_below_threshold(db) -> None:
+    """Prune deletes working memory entries with activation below threshold."""
+    persona = await make_test_persona(db)
+    e1 = await _append_test_event(db, persona, "Event one")
+    e2 = await _append_test_event(db, persona, "Event two")
+    e3 = await _append_test_event(db, persona, "Event three")
+
+    # Insert entries with varying activations
+    for event_id, activation in [(e1.id, 0.9), (e2.id, 0.05), (e3.id, 0.01)]:
+        await db.execute(
+            "INSERT INTO working_memory (persona_id, event_id, activation) VALUES (?, ?, ?)",
+            (persona.id, event_id, activation),
+        )
+    await db.commit()
+
+    from memory_engine.core.consolidator import _prune_working_memory
+
+    pruned = await _prune_working_memory(db, persona.id, activation_threshold=0.1, capacity=64)
+    assert pruned == 2, f"Expected 2 pruned (0.05 and 0.01 < 0.1), got {pruned}"
+
+    # Only the 0.9 entry should remain
+    cursor = await db.execute(
+        "SELECT count(*) as c FROM working_memory WHERE persona_id = ?",
+        (persona.id,),
+    )
+    row = await cursor.fetchone()
+    assert row["c"] == 1
+
+
+async def test_prune_enforces_capacity(db) -> None:
+    """Prune removes lowest-activation entries when count exceeds capacity."""
+    persona = await make_test_persona(db)
+
+    # Insert 10 events + working memory entries with activation 0.1..1.0
+    for i in range(10):
+        event = await _append_test_event(db, persona, f"Capacity test event {i}")
+        await db.execute(
+            "INSERT INTO working_memory (persona_id, event_id, activation) VALUES (?, ?, ?)",
+            (persona.id, event.id, 0.1 * (i + 1)),
+        )
+    await db.commit()
+
+    from memory_engine.core.consolidator import _prune_working_memory
+
+    # Set capacity to 5 — should prune the 5 lowest-activation entries
+    pruned = await _prune_working_memory(
+        db, persona.id, activation_threshold=0.01, capacity=5,
+    )
+    assert pruned == 5, f"Expected 5 pruned to enforce capacity=5, got {pruned}"
+
+    # Remaining 5 should be the highest activations
+    cursor = await db.execute(
+        "SELECT activation FROM working_memory WHERE persona_id = ? ORDER BY activation ASC",
+        (persona.id,),
+    )
+    rows = await cursor.fetchall()
+    activations = [row["activation"] for row in rows]
+    assert len(activations) == 5
+    # Lowest remaining should be ~0.6 (6th of 10)
+    assert activations[0] >= 0.5, f"Lowest remaining activation {activations[0]} — wrong entries pruned"
