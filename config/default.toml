@@ -1,0 +1,124 @@
+# memory_engine default configuration
+#
+# Override any value via environment variables with the prefix MEMORY_ENGINE_
+# and nested-key delimiter __. Example:
+#   MEMORY_ENGINE_DB__PATH=/var/lib/engine.db
+#   MEMORY_ENGINE_GROUNDING__SIMILARITY_THRESHOLD=0.35
+#
+# See src/memory_engine/config.py for the Pydantic Settings model.
+
+# --- Engine ---------------------------------------------------------
+log_level = "INFO"
+
+# Soft budget cap on LLM spend. 0.0 = local-only mode (no paid LLM calls).
+# The policy plane's dispatch function refuses calls that would exceed this
+# budget for the current calendar month.
+monthly_budget_usd = 0.0
+
+# --- Database -------------------------------------------------------
+[db]
+# 'sqlite' (default) or 'postgres'
+backend = "sqlite"
+# Path used when backend = 'sqlite'
+path = "data/engine.db"
+# Connection URL used when backend = 'postgres'
+# url = "postgresql+asyncpg://user:pass@host:5432/memory_engine"
+
+# --- Embeddings -----------------------------------------------------
+[embeddings]
+# See ADR 0006 for rationale on the default. To upgrade, follow
+# docs/runbooks/embedder_dimension_change.md.
+model = "sentence-transformers/all-MiniLM-L6-v2"
+dimensions = 384
+# embedder_rev is stored on every neuron. Bump when you change model or
+# when sentence-transformers updates the model weights.
+revision = "sbert-minilm-l6-v2-1"
+# Batch size for re-embedding jobs (consolidator, rotation).
+batch_size = 32
+
+# --- Grounding gate -------------------------------------------------
+[grounding]
+# Cosine similarity threshold between candidate neuron and its cited
+# source events. Below this, reject into quarantine.
+# Calibrate per deployment; 0.40 is a starting point, not a constant.
+similarity_threshold = 0.40
+# Tiers that trigger the LLM judge. Working/episodic can skip for cost.
+llm_judge_required_for_tiers = ["semantic", "procedural"]
+
+# --- Working memory -------------------------------------------------
+[working_memory]
+capacity = 64
+initial_activation = 1.0
+decay_half_life_minutes = 30
+
+# --- Consolidator ---------------------------------------------------
+[consolidator]
+# How often the consolidator loop runs.
+interval_seconds = 300
+# Max candidates extracted per event to bound extraction cost.
+max_candidates_per_event = 10
+# Episode boundary heuristic: gap (minutes) between events that starts
+# a new episode.
+episode_gap_minutes = 30
+
+# --- Healer ---------------------------------------------------------
+[healer]
+# How often the invariant scan runs.
+interval_seconds = 60
+# On critical violation, re-check after this delay to filter races.
+confirm_critical_delay_ms = 100
+# If true, invariant violations of severity=info are not persisted
+# to healing_log (reduces noise on long-running deployments).
+suppress_info_persistence = false
+
+# --- Retrieval ------------------------------------------------------
+[retrieval]
+# Per-stream top-k before RRF fusion.
+per_stream_top_k = 50
+# RRF damping constant.
+rrf_k = 60
+# Default when caller doesn't specify top_k.
+default_top_k = 10
+# Auto-lens fallback when the policy-plane classifier is unavailable.
+auto_lens_fallback = "self"
+
+# --- HTTP server ----------------------------------------------------
+[http]
+host = "127.0.0.1"
+port = 4000
+# Max request body size in bytes (1 MB default).
+max_body_bytes = 1048576
+# Request timeout in seconds.
+timeout_seconds = 30
+
+# --- Policy plane ---------------------------------------------------
+[policy]
+# Base URL for the OpenAI-compatible LLM endpoint.
+# LiteLLM: "http://localhost:4000" (same host as engine, different port)
+# OpenAI:  "https://api.openai.com/v1"
+# Ollama:  "http://localhost:11434/v1"
+llm_base_url = "http://localhost:11434/v1"
+# Default model name; sites may override via SiteSchema.
+default_model = "llama3.2:3b"
+# Prompt cache TTL (hours). 0 = no expiry.
+cache_ttl_hours = 168
+# Fail dispatch if LLM call takes longer than this.
+llm_timeout_seconds = 30
+
+# --- Observability --------------------------------------------------
+[observability]
+# Prometheus /metrics endpoint.
+metrics_enabled = true
+# OpenTelemetry tracing (off by default; Phase 6 adds optional export).
+tracing_enabled = false
+# Structured-log output format: 'json' (default) or 'text' (dev-friendly).
+log_format = "json"
+
+# --- Backup (Phase 6+) ----------------------------------------------
+[backup]
+# Path prefix for local staging before encryption.
+stage_dir = "data/backup_stage"
+# age recipient public key. Stored separately from the engine.
+# recipient = "age1..."
+# Offsite destination, populated by bin/backup.sh.
+# dest = "s3://bucket/memory_engine_backups/"

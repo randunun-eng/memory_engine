@@ -1,0 +1,115 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint, type-check, test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.5.x"
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install sqlite-vec
+        run: |
+          # sqlite-vec ships as a loadable extension. Install via pip so the
+          # test harness can locate it. Production deployments may prefer the
+          # prebuilt .so from https://github.com/asg017/sqlite-vec/releases.
+          uv pip install --system sqlite-vec
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Ruff lint
+        run: uv run ruff check
+
+      - name: Ruff format check
+        run: uv run ruff format --check
+
+      - name: mypy (strict)
+        run: uv run mypy src/
+
+      - name: pytest (unit + integration + invariants)
+        run: |
+          uv run pytest tests/unit tests/integration tests/invariants \
+            -v --cov=memory_engine --cov-report=term --cov-report=xml
+        env:
+          # Tests use in-memory SQLite; no real secrets needed.
+          MEMORY_ENGINE_VAULT_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          if-no-files-found: warn
+
+  integrity:
+    name: governance invariants
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Every governance rule has an invariant test
+        run: |
+          # This calls the meta-invariant that asserts every rule 1..16
+          # has at least one registered invariant check.
+          uv run pytest tests/invariants/test_all_rules_have_invariants.py -v
+
+      - name: No LLM call sites outside policy/dispatch
+        run: |
+          # Custom grep-based check: nothing in src/ should import openai,
+          # anthropic, or litellm except the policy plane.
+          ! grep -rn --include='*.py' \
+              -e 'from openai' -e 'from anthropic' -e 'from litellm' \
+              src/memory_engine \
+              | grep -v 'src/memory_engine/policy/'
+
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

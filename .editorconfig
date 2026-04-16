@@ -1,0 +1,34 @@
+# EditorConfig — https://editorconfig.org
+# Applied automatically by most modern editors.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{py,pyi}]
+indent_size = 4
+
+[*.{toml,yml,yaml,json}]
+indent_size = 2
+
+[*.{md,markdown}]
+# Markdown is whitespace-sensitive in places (trailing spaces = hard break);
+# don't auto-strip.
+trim_trailing_whitespace = false
+indent_size = 2
+
+[{Makefile,*.mk}]
+indent_style = tab
+
+[*.sh]
+indent_size = 2
+end_of_line = lf
+
+[migrations/*.sql]
+indent_size = 2

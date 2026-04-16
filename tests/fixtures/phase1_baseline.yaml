@@ -1,0 +1,193 @@
+# Phase 1 eval baseline — 20 seeded queries with expected top neurons.
+#
+# Used by: tests/eval/test_recall_baseline.py
+# Acceptance criterion reference: docs/phases/PHASE_1.md § "Eval baseline"
+#
+# Format:
+#   - query: natural language question
+#     lens: retrieval lens to apply
+#     expected_neuron_ids: list of neuron IDs expected in top-10, in rough rank order.
+#                          The top-3 IDs are STRONG expectations (MRR hits count).
+#                          IDs 4-10 are acceptable if they appear anywhere in top-10.
+#     rationale: why these neurons are the right answer. Not used by the test;
+#                included so a human reviewer understands the fixture.
+#
+# Seeding: tests/fixtures/phase1_baseline.py creates the neurons this fixture
+# references. Seed one persona "alice_twin" with three counterparties (Alex,
+# Priya, Group chat "Solar crew"), and 40 neurons across the three counterparties
+# plus 15 domain_facts. Queries exercise lens discrimination and cross-stream
+# fusion.
+
+queries:
+  # ------------- Self lens -------------
+
+  - query: "what programming languages do I know"
+    lens: "self"
+    expected_neuron_ids: [1, 2, 3]
+    rationale: |
+      Three self_fact neurons about the persona's stack (python, go, typescript).
+      Top-1 should be the most recently reinforced.
+
+  - query: "where do I live"
+    lens: "self"
+    expected_neuron_ids: [5]
+    rationale: |
+      Single self_fact about location. If the retrieval returns domain facts
+      about the same city, that's rule 12 working — but the self_fact should
+      rank first.
+
+  - query: "do I drink coffee"
+    lens: "self"
+    expected_neuron_ids: [7, 8]
+    rationale: |
+      Two neurons: "prefers espresso in the morning" and "stopped drinking coffee
+      after 2pm". Both relevant; either ranking acceptable.
+
+  # ------------- Counterparty lens: Alex -------------
+
+  - query: "what does Alex do for work"
+    lens: "counterparty:whatsapp:+19175550101"
+    expected_neuron_ids: [11, 12]
+    rationale: |
+      counterparty_facts about Alex's job. A neuron from Priya (counterparty 2)
+      mentioning her own job MUST NOT appear in this result set — rule 12.
+
+  - query: "when is Alex's birthday"
+    lens: "counterparty:whatsapp:+19175550101"
+    expected_neuron_ids: [14]
+    rationale: |
+      Single dated counterparty_fact. Birthday dates are a classic bi-temporal
+      test: t_valid_start should be set to the actual birthday date, not the
+      conversation date when it was mentioned.
+
+  - query: "what vehicle does Alex drive"
+    lens: "counterparty:whatsapp:+19175550101"
+    expected_neuron_ids: [16, 17]
+    rationale: |
+      Supersession test: Alex had a 2019 Civic (neuron 16, superseded),
+      now drives a 2025 EV (neuron 17). Only 17 should appear in current
+      retrieval. If 16 appears, the supersession filter failed.
+
+  # ------------- Counterparty lens: Priya -------------
+
+  - query: "what is Priya working on"
+    lens: "counterparty:whatsapp:+442079460000"
+    expected_neuron_ids: [21, 22, 23]
+    rationale: |
+      Three counterparty_facts about Priya's current projects. Cross-counterparty
+      check: a neuron about Alex's side project (neuron 12) MUST NOT appear.
+
+  - query: "does Priya have kids"
+    lens: "counterparty:whatsapp:+442079460000"
+    expected_neuron_ids: [25]
+    rationale: |
+      Sensitive personal fact. Scope should have been classified 'private';
+      ensure it's returned under the counterparty lens but not under domain lens.
+
+  # ------------- Counterparty lens: Solar crew (group) -------------
+
+  - query: "panel efficiency target"
+    lens: "counterparty:whatsapp-group:120363solar@g.us"
+    expected_neuron_ids: [31, 32]
+    rationale: |
+      Group chat about solar project. The individual who made the claim within
+      the group (via sender_hint) MUST NOT be used for retrieval — rule 5.
+
+  - query: "what inverter are we using"
+    lens: "counterparty:whatsapp-group:120363solar@g.us"
+    expected_neuron_ids: [34]
+    rationale: |
+      Group decision. A neuron about Alex's personal inverter (neuron 15)
+      must not leak here — Alex is a separate counterparty even though he's
+      in this group.
+
+  # ------------- Domain lens -------------
+
+  - query: "current MPPT algorithm research"
+    lens: "domain"
+    expected_neuron_ids: [51, 52, 53]
+    rationale: |
+      Three domain_facts about solar charge controller algorithms. These should
+      also surface under the Solar crew lens (domain facts appear everywhere).
+
+  - query: "how does pgvector compare to sqlite-vec"
+    lens: "domain"
+    expected_neuron_ids: [55, 56]
+    rationale: |
+      Technical domain knowledge. No counterparty_fact should appear —
+      this is a pure domain query.
+
+  # ------------- Fusion tests (BM25 + vector should disagree individually) -------------
+
+  - query: "laptop I broke last summer"
+    lens: "self"
+    expected_neuron_ids: [6]
+    rationale: |
+      BM25 will find exact token match on "laptop" but the actual event said
+      "MacBook died". Vector should bridge. Tests that fusion works when
+      streams disagree on the top pick.
+
+  - query: "Sri Lankan food places Alex recommended"
+    lens: "counterparty:whatsapp:+19175550101"
+    expected_neuron_ids: [13]
+    rationale: |
+      Geographic + categorical query. Tests that the BM25 index handles
+      compound entity names ("Sri Lankan") without over-tokenizing.
+
+  # ------------- Token budget truncation -------------
+
+  - query: "everything about my job history"
+    lens: "self"
+    expected_neuron_ids: [41, 42, 43, 44, 45]
+    rationale: |
+      Five relevant neurons; token_budget=200 should truncate to top-2 or top-3.
+      Tests that truncation is content-aware (not just by count).
+
+  # ------------- Empty / negative tests -------------
+
+  - query: "my passport number"
+    lens: "self"
+    expected_neuron_ids: []
+    rationale: |
+      Should return nothing. Passport is in the vault, not in neurons (rule R7).
+      The retrieval layer never sees vaulted values. If ANY neuron contains
+      the actual passport number, vault isolation is broken.
+
+  - query: "what did that random stranger say"
+    lens: "counterparty:whatsapp:+19175559999"  # unknown counterparty
+    expected_neuron_ids: []
+    rationale: |
+      Unknown counterparty. Should return empty results, not error.
+
+  - query: ""
+    lens: "self"
+    expected_neuron_ids: []
+    rationale: |
+      Empty query. Returns empty; does not raise.
+
+  # ------------- As-of / bi-temporal -------------
+
+  - query: "what vehicle does Alex drive"
+    lens: "counterparty:whatsapp:+19175550101"
+    as_of: "2024-03-15T00:00:00Z"
+    expected_neuron_ids: [16]
+    rationale: |
+      Same query as earlier, with as_of before the 2025 EV acquisition.
+      Should return the old Civic neuron (16), not the current EV (17).
+      Bi-temporal correctness.
+
+  - query: "where does Priya work"
+    lens: "counterparty:whatsapp:+442079460000"
+    as_of: "2025-01-01T00:00:00Z"
+    expected_neuron_ids: [24]
+    rationale: |
+      Priya had previous job (24) until mid-2025, then new job (22).
+      At as_of Jan 2025, 24 is the active state.
+
+# Acceptance: MRR@10 computed across these 20 queries must be > 0.60.
+# Strong hits (top-1 match of expected first ID) count full; hits in positions
+# 2-3 count at 1/rank; hits in positions 4-10 count at 0.3/rank.
+#
+# If MRR drops below 0.60 on a PR, the PR is blocked. Investigate: was the
+# embedder or BM25 tokenizer changed? Were the seeds modified? Is this a
+# genuine regression?
