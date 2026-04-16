@@ -44,6 +44,10 @@ Deferred to Phase 6 (observability/operational hardening). The fix is a per-pers
 
 **Threshold sensitivity:** 0.40 is the current default. Lowering to 0.30 would reduce FN but increase FP. With real embeddings, 0.40 should be a better balance. Re-measure at Phase 7 with MiniLM and LLM judge enabled.
 
+**P=R symmetry caveat:** Precision and recall are identical (76.7%) because the fixture set is near-balanced (30 positive / 20 negative) and errors are symmetric (7 FP / 7 FN). In production, class imbalance will be heavy — most extractions are plausible, only a small fraction ungrounded — so FP rate and FN rate will diverge. Track them separately from Phase 7 onward; aggregate accuracy will mask real performance shifts.
+
+**Re-measurement plan:** Before Phase 7 operator week, run the same 50 fixtures through the real pipeline (MiniLM embeddings + LLM judge on semantic/procedural tiers). Record the second data point here. The delta between bag-of-words baseline (72%) and real-pipeline number is the Phase 2→7 quality evidence.
+
 ### 2026-04-16: Double contradiction check (consolidator.py)
 
 The consolidator runs `find_overlapping_neurons` + `check_contradiction` twice for the same neuron pair: once before inserting the new neuron (to detect contradictions) and once after (to execute supersession). The pre-insert check result is not cached or passed through, so the LLM judge is called twice for the same pair.
@@ -55,6 +59,8 @@ At Phase 2 volumes (mock LLM, single-user) this is imperceptible. Under real LLM
 Model pinned to `ollama/llama3.1:8b` as the default in PolicyDispatch. The 72% grounding accuracy baseline was measured without an LLM judge — changing the model (even within the Llama family) requires re-measuring because extraction quality and grounding judge behavior are model-dependent.
 
 The pin lives in dispatch.py as a default parameter and in config.py as the broader embeddings.model setting. Changing either is a re-measurement event: run `tests/eval/test_grounding_accuracy.py` and update this DRIFT entry with the new numbers.
+
+**Digest pinning note:** Ollama tag `:8b` is mutable — Meta can republish weights with different quantization under the same tag. For full reproducibility before Phase 7, pin to digest: `llama3.1:8b@sha256:...`. Ollama supports this. Not blocking for Phase 2-6 (local dev, mock LLM in tests), but required before the operator week where "measured against this exact model" must be verifiable.
 
 ## Resolved entries
 
