@@ -15,7 +15,6 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-
 # ---- Rule 1: events immutable ------------------------------------------
 
 async def test_event_update_is_forbidden(db, seed_persona) -> None:

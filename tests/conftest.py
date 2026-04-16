@@ -7,9 +7,11 @@ category (integration, invariants, etc.).
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -23,7 +25,7 @@ if TYPE_CHECKING:
 
 
 @pytest_asyncio.fixture
-async def db(tmp_path: Path) -> AsyncIterator["aiosqlite.Connection"]:
+async def db(tmp_path: Path) -> AsyncIterator[aiosqlite.Connection]:
     """Fresh SQLite DB with all migrations applied.
 
     Uses a tmp_path-based file (not :memory:) so that sqlite-vec extension
@@ -49,7 +51,7 @@ async def db(tmp_path: Path) -> AsyncIterator["aiosqlite.Connection"]:
 
 
 @pytest_asyncio.fixture
-async def seed_persona(db: "aiosqlite.Connection"):
+async def seed_persona(db: aiosqlite.Connection):
     """A single seeded test persona with an Ed25519 keypair.
 
     Returns a TestPersona dataclass with id, slug, public_key_b64, and
@@ -61,7 +63,7 @@ async def seed_persona(db: "aiosqlite.Connection"):
 
 
 @pytest_asyncio.fixture
-async def seed_counterparty(db: "aiosqlite.Connection", seed_persona):
+async def seed_counterparty(db: aiosqlite.Connection, seed_persona):
     """A seeded counterparty belonging to the seeded persona."""
     cursor = await db.execute(
         "INSERT INTO counterparties (persona_id, external_ref, display_name) VALUES (?, ?, ?)",

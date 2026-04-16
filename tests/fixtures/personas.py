@@ -32,7 +32,7 @@ class TestPersona:
 
 
 async def make_test_persona(
-    conn: "aiosqlite.Connection",
+    conn: aiosqlite.Connection,
     slug: str = "test_twin",
 ) -> TestPersona:
     """Insert a persona row and return its details with a freshly-generated keypair.

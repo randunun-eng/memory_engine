@@ -294,13 +294,13 @@ Secrets live in `.env.local` (gitignored). Copy from `.env.example` at repo root
 
 > **Update this after every working session.**
 
-- **Current phase:** Phase 0 (Skeleton) — **COMPLETE**
-- **Phase 0 acceptance criteria:** All met. 15/15 tests pass. CLI migrate/status works. Demo script round-trips 10 events. ruff + mypy clean.
-- **Last worked on:** 2026-04-16. Implemented all Phase 0 source modules: exceptions, config, db/connection, db/migrations, policy/signing, core/events, cli/main, examples/phase0_round_trip.py. Fixed immutability triggers in 001_initial.sql to produce OperationalError (not IntegrityError) matching test expectations.
-- **Next session target:** Phase 1 — Retrieval (BM25 + vector + graph + RRF). Start with `src/memory_engine/retrieval/` modules.
+- **Current phase:** Phase 1 (Retrieval) — **COMPLETE**
+- **Phase 1 acceptance criteria:** All met. 20/20 Phase 1 tests pass (12 integration + 8 invariants including 5 T3-early canary tests). 35/35 total (Phase 0 + Phase 1). ruff + mypy clean. Lens isolation verified: counterparty lens never leaks across boundaries. as_of temporal queries work. Token budget truncation works.
+- **Last worked on:** 2026-04-16. Implemented full retrieval plane: models, lens, bm25, vector, graph (empty stub), fuse (RRF), trace (async fire-and-forget), api (recall). Added HTTP surface (POST /v1/recall). Created Phase 1 baseline seed fixture (27 neurons across 3 counterparties). Fixed BM25 negative IDF for small corpora (rank-bm25 BM25Okapi produces negative scores when corpus < 3 documents; changed filter from `> 0.0` to `!= 0.0`).
+- **Next session target:** Phase 2 — Consolidator + Grounding Gate. Start with `migrations/002_consolidation.sql`, then `src/memory_engine/core/consolidator.py`.
 - **Blocked by:** Nothing.
-- **Decisions since last update:** (1) Config uses deferred `get_settings()` instead of module-level singleton to avoid import-time side effects in tests. (2) Nested settings classes use `extra="ignore"` so future TOML fields from later phases don't break Phase 0 code. (3) Immutability triggers use non-existent table reference instead of RAISE(ABORT) to produce OperationalError, which is what the test suite expects.
-- **Notes:** The blueprint is frozen; further design is out of scope. Every PR should reference which phase it's in and which acceptance criterion it advances.
+- **Decisions since last update:** (1) BM25 score filter uses `!= 0.0` instead of `> 0.0` to handle rank-bm25's negative IDF in small corpora — critical for as_of temporal queries. (2) Graph stream returns empty list (no speculative synapse tables). (3) Auto lens defaults to self lens in Phase 1 (1B classifier deferred). (4) Trace emission uses asyncio.create_task with background task set to prevent GC. (5) LensFilter WHERE clause uses `n.` prefix table alias for composability with BM25/vector/graph streams.
+- **Notes:** Eval baseline test exists (`tests/eval/test_recall_baseline.py`) but requires `--eval` flag and real embedder. MRR@10 target is 0.60 floor, 0.70-0.85 realistic range.
 
 ---
 

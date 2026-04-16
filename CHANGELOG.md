@@ -8,7 +8,30 @@ from v1.0 onward; pre-1.0 versions are 0.<phase>.<patch>.
 
 ## [Unreleased]
 
-*(nothing yet — Phase 1 work will land here)*
+*(nothing yet — Phase 2 work will land here)*
+
+---
+
+## [0.2.0] - 2026-04-16
+
+### Added
+- Full retrieval plane: BM25 + vector + graph (empty Phase 1) + RRF fusion (`src/memory_engine/retrieval/`).
+- Recall API: `recall(query, lens, as_of, top_k, token_budget)` with citations and per-neuron scores (`retrieval/api.py`).
+- Lens enforcement via parameterized SQL WHERE clauses — structural cross-counterparty isolation (rule 12) (`retrieval/lens.py`).
+- BM25 retrieval stream with lowercase tokenizer, no stemming, as_of temporal support (`retrieval/bm25.py`).
+- Vector retrieval stream via sqlite-vec cosine distance with embedder_rev filtering (`retrieval/vector.py`).
+- Reciprocal Rank Fusion with k=60 damping, source tracking per result (`retrieval/fuse.py`).
+- Async retrieval_trace emission via fire-and-forget task (rule 7) (`retrieval/trace.py`).
+- Token budget truncation (~4 chars/token estimate).
+- HTTP surface: `POST /v1/recall` with Pydantic request/response models (`http/routes/recall.py`).
+- Phase 1 baseline seed fixture: 27 neurons across persona alice_twin + 3 counterparties (`tests/fixtures/phase1_seed.py`).
+- Phase 1 test suite: 12 integration + 8 invariant tests (including 5 T3-early canary tests), all passing.
+- Eval baseline test scaffold (`tests/eval/test_recall_baseline.py`, requires `--eval` flag).
+
+### Fixed
+- BM25 score filter changed from `> 0.0` to `!= 0.0` to handle rank-bm25 BM25Okapi negative IDF in corpora with < 3 documents (see `docs/blueprint/DRIFT.md`).
+
+Refs: phase-1-complete
 
 ---
 
