@@ -78,17 +78,18 @@ async def seed_counterparty(db: aiosqlite.Connection, seed_persona):
 # ---- Markers -----------------------------------------------------------
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-skip eval tests unless --eval is passed.
+    """Auto-skip eval/perf tests unless their flags are passed."""
+    run_eval = config.getoption("--eval", default=False)
+    run_perf = config.getoption("--perf", default=False)
 
-    Eval tests are slow (require real embedder and LLM endpoints). They run
-    only when the operator explicitly opts in.
-    """
-    if config.getoption("--eval", default=False):
-        return
     skip_eval = pytest.mark.skip(reason="eval tests skipped; use --eval to run")
+    skip_perf = pytest.mark.skip(reason="perf tests skipped; use --perf to run")
+
     for item in items:
-        if "eval" in item.keywords:
+        if "eval" in item.keywords and not run_eval:
             item.add_marker(skip_eval)
+        if "perf" in item.keywords and not run_perf:
+            item.add_marker(skip_perf)
 
 
 def pytest_addoption(parser):
@@ -97,4 +98,10 @@ def pytest_addoption(parser):
         action="store_true",
         default=False,
         help="Run slow eval tests (requires real embedder + LLM)",
+    )
+    parser.addoption(
+        "--perf",
+        action="store_true",
+        default=False,
+        help="Run perf benchmark tests (10k+ neurons, takes ~30s)",
     )

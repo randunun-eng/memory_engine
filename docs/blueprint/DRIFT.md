@@ -8,6 +8,7 @@ Entries are append-only. Once resolved, the entry stays with its resolution note
 |---|---|---|---|---|
 | 2026-04-16 | migration/phase0 | Removed `WHEN OLD.type != 'halted'` guard on `events_immutable_update` trigger; changed trigger mechanism from `RAISE(ABORT, ...)` to non-existent-table reference to produce `OperationalError` instead of `IntegrityError` | Accepted — guard was speculative (halt events are inserted, never updated) and weakened rule 1 by creating an exception with no consumer; error type change aligns with what invariant tests check, and `OperationalError` is semantically more correct than `IntegrityError` for an immutability enforcement | Resolved |
 | 2026-04-16 | retrieval/phase1 | BM25 score filter changed from `> 0.0` to `!= 0.0` to handle rank-bm25 negative IDF in small corpora | Accepted — BM25Okapi produces negative IDF scores when corpus has < 3 documents, which made temporal as_of queries (where the matching corpus is often 1-2 documents) return empty; non-matching docs always score exactly 0.0 so `!= 0.0` correctly preserves relevance signal | Resolved |
+| 2026-04-16 | retrieval/phase1 | BM25 index is rebuilt from scratch on every `recall()` call instead of being cached/incremental | Accepted as Phase 1 simplification — p99 is 19ms at 10k neurons so not a bottleneck yet; incremental maintenance deferred to Phase 6 when sustained QPS matters | Open |
 
 ## Conventions
 
@@ -17,7 +18,13 @@ Entries are append-only. Once resolved, the entry stays with its resolution note
 
 ## Open entries
 
-*(none)*
+### 2026-04-16: BM25 index rebuild-per-call (retrieval bm25.py)
+
+`BM25Index.build()` is called fresh on every `recall()` invocation — it loads all matching neurons from SQLite into memory and constructs a new `BM25Okapi` index. At 10k neurons this costs ~10ms (the dominant cost in a BM25-only query), which is fine for Phase 1's single-user, low-QPS scenario.
+
+At sustained 100 QPS this becomes 100 rebuilds/s. At 100k+ neurons the rebuild time will be linear and start to matter. The cache isn't warm across queries — IDF tables and tokenized corpus are recomputed each time.
+
+Deferred to Phase 6 (observability/operational hardening). The fix is a per-persona memoized BM25 index that invalidates on neuron insert/supersede/prune events.
 
 ## Resolved entries
 

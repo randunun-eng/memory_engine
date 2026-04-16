@@ -163,6 +163,7 @@ addopts = [
 ]
 markers = [
     "eval: slow evaluation tests, excluded from default run",
+    "perf: performance benchmarks (10k+ neurons), excluded from default run",
     "postgres: requires a running Postgres instance",
 ]
 
