@@ -8,7 +8,32 @@ from v1.0 onward; pre-1.0 versions are 0.<phase>.<patch>.
 
 ## [Unreleased]
 
-*(nothing yet — Phase 2 work will land here)*
+*(nothing yet — Phase 3 work will land here)*
+
+---
+
+## [0.3.0] - 2026-04-16
+
+### Added
+- Migration 002: working_memory, quarantine_neurons, episodes, prompt_templates tables (`migrations/002_consolidation.sql`).
+- Policy dispatch: single entry point for all LLM calls with cache, template resolution, and response parsing (`policy/dispatch.py`).
+- Prompt registry: loads versioned markdown templates with YAML frontmatter, hot-reload support (`policy/registry.py`).
+- Context broker: parameter validation and filtering per prompt site, prevents injection via unexpected fields (`policy/broker.py`).
+- Prompt cache: LRU cache keyed on (site, prompt_hash, input_hash, persona_id) — persona_id in key prevents cross-persona poisoning (`policy/cache.py`).
+- LLM-driven entity extraction producing NeuronCandidate objects from events (`core/extraction.py`).
+- Grounding gate: citation resolution + cosine similarity check + optional LLM judge for semantic/procedural tiers (`core/grounding.py`).
+- Contradiction detection: same-entity-pair keyword overlap heuristic + LLM judge, with supersession on contradict (`core/contradiction.py`).
+- Consolidator: promote → reinforce → decay → prune loop with exponential activation decay (`core/consolidator.py`).
+- Quarantine: rejected neuron candidates written to quarantine_neurons table, not silently dropped.
+- New exceptions: PromptNotFound, DispatchError, LLMResponseParseError, GroundingRejection.
+- Phase 2 test suite: 10 integration + 5 invariant tests, all passing.
+
+### Verified
+- Rule 14: empty source_event_ids rejected by CHECK constraint.
+- Rule 15: distinct_source_count <= source_count enforced; echo citations do not inflate distinct count (mem0 audit).
+- Rule 16: NULL t_valid_start preserved through extraction and promotion pipeline.
+
+Refs: phase-2-complete
 
 ---
 
