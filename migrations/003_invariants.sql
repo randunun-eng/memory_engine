@@ -29,3 +29,15 @@ CREATE INDEX ix_healing_unresolved
 
 CREATE INDEX ix_healing_severity
   ON healing_log(severity, detected_at DESC);
+
+-- Durable halt state: survives process restarts.
+-- At most one row with active=1 at any time (enforced by unique index).
+-- Halt engage inserts/updates; halt release sets active=0.
+CREATE TABLE halt_state (
+  id              INTEGER PRIMARY KEY CHECK (id = 1),  -- singleton row
+  active          INTEGER NOT NULL DEFAULT 0 CHECK (active IN (0, 1)),
+  invariant_name  TEXT,
+  details         TEXT,
+  engaged_at      TEXT,
+  released_at     TEXT
+);

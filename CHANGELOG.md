@@ -15,23 +15,28 @@ from v1.0 onward; pre-1.0 versions are 0.<phase>.<patch>.
 ## [0.4.0] - 2026-04-16
 
 ### Added
-- Migration 003: healing_log table with severity/status CHECK constraints and partial indexes (`migrations/003_invariants.sql`).
+- Migration 003: healing_log + halt_state tables with severity/status CHECK constraints and partial indexes (`migrations/003_invariants.sql`).
 - Invariant registry: 21 declarative checks across all 16 governance rules, using raw SQL exclusively (`healing/invariants.py`).
 - Invariant checker: runs full or critical-only scans, records violations to healing_log, triggers halt on critical (`healing/checker.py`).
-- Halt mechanism: in-memory HaltState singleton + durable healing_log record; `assert_not_halted()` gate for API handlers (`healing/halt.py`).
+- Halt mechanism: durable halt_state table (singleton row, survives restart) + in-memory HaltState flag; `load_halt_state()` at startup, `assert_not_halted()` gate for API handlers (`healing/halt.py`).
+- Healer loop: asyncio background task scanning every 60s, survives individual check exceptions (`healing/loop.py`).
 - Auto-repair library: `repair_missing_provenance` (quarantines neuron), `repair_distinct_count_mismatch` (corrects count) (`healing/repair.py`).
 - Rule 1: trigger existence check queries sqlite_master for events_immutable_update and events_immutable_delete (schema drift defense).
 - Rule 12: 3 checks — cross-counterparty source mismatch, counterparty_fact requires counterparty_id, self/domain facts must not have counterparty_id.
 - Rule 14: 2 checks — empty source_event_ids, dangling citations to non-existent events.
 - Rule 15: 2 checks — distinct_source_count > source_count, distinct count vs actual unique source IDs.
-- Phase 3 test suite: 12 integration + 13 invariant tests, all passing.
+- Phase 3 test suite: 17 integration + 13 invariant tests, all passing.
 
 ### Verified
 - All 16 governance rules have at least one registered invariant check (meta-test).
 - Rules 12, 14, 15 have multiple checks covering different attack vectors.
 - Critical violations engage halt; warnings log but don't halt.
-- Halt release clears in-memory flag and marks healing_log entries resolved.
+- Halt survives simulated restart (load from halt_state table).
+- Halt release is durable (active=0 persists across restart).
+- Healer loop runs at least one scan and halts on critical violation.
+- Healer loop survives exceptions in individual checks.
 - Synthetic cross-counterparty injection detected in single scan.
+- Scan baseline: 3ms at 50 events + 10 neurons; ~0.6s extrapolated to 10k (30s budget).
 
 Refs: phase-3-complete
 

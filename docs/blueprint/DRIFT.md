@@ -15,6 +15,7 @@ Entries are append-only. Once resolved, the entry stays with its resolution note
 | 2026-04-16 | grounding/phase2 | Grounding gate accuracy: 72% on 50 hand-labeled fixtures (TP=23, TN=13, FP=7, FN=7), threshold=0.40, embed=bag-of-words (not MiniLM). FP cluster: specificity inflation where word overlap is high but meaning was changed (u01, u06, u07, u08, u13, u15, u19). FN cluster: valid paraphrases with low word overlap. Real embeddings should improve both. | Baseline measurement — re-measure at Phase 7 with MiniLM and real LLM judge enabled | Open |
 | 2026-04-16 | consolidator/phase2 | Contradiction check runs the LLM judge twice for the same overlapping neuron pair (once pre-insert for detection, once post-insert for supersession) — doubles LLM cost for contradiction cases | Phase 6 optimization: cache first check result or restructure to single-pass | Open |
 | 2026-04-16 | consolidator/phase2 | LLM model pinned to `ollama/llama3.1:8b` in PolicyDispatch default. Changing the model requires re-measuring grounding accuracy because different models have different extraction and grounding characteristics. The 72% baseline was measured without an LLM judge (similarity-only). | Pin documented in config.py — changing model is a re-measurement event | Open |
+| 2026-04-16 | healing/phase3 | Invariant scan duration: 3ms at 50 events + 10 neurons. Pessimistic linear extrapolation to 10k events: 0.6s. Sub-linear (indexed queries dominate): ~0.2s. Budget is 30s; 50x headroom at 10k. Re-measure at Phase 6 with `--perf` flag against real 10k-event database. | Baseline measurement — headroom is large, no action needed until Phase 6 | Open |
 
 ## Conventions
 
@@ -61,6 +62,18 @@ Model pinned to `ollama/llama3.1:8b` as the default in PolicyDispatch. The 72% g
 The pin lives in dispatch.py as a default parameter and in config.py as the broader embeddings.model setting. Changing either is a re-measurement event: run `tests/eval/test_grounding_accuracy.py` and update this DRIFT entry with the new numbers.
 
 **Digest pinning note:** Ollama tag `:8b` is mutable — Meta can republish weights with different quantization under the same tag. For full reproducibility before Phase 7, pin to digest: `llama3.1:8b@sha256:...`. Ollama supports this. Not blocking for Phase 2-6 (local dev, mock LLM in tests), but required before the operator week where "measured against this exact model" must be verifiable.
+
+### 2026-04-16: Invariant scan duration baseline (healing/checker.py)
+
+**Measurement:** 3ms average on 50 events + 10 neurons (3 runs, consistent). Full scan of 21 invariants across 16 rules.
+
+**Extrapolation to 10k events:**
+- Pessimistic (linear with event count): 0.6s — assumes all checks scale linearly. Most do (they iterate neurons and query events per neuron).
+- Optimistic (sub-linear, indexed): 0.2s — indexed queries (trigger existence, scope validation, count comparisons) are O(1) or O(log n). Only provenance checks (rule 2, 6, 14) iterate neurons and do per-citation lookups.
+
+**Budget:** 30s. Current headroom is 50x even pessimistic. The bottleneck at 10k will be the per-neuron citation resolution checks (rules 2, 14) which do `SELECT 1 FROM events WHERE id = ?` for each cited event. These are indexed lookups but the loop count grows with neuron count. If this becomes a problem, batch into a single `WHERE id IN (...)` query.
+
+**Re-measurement:** Phase 6 operational hardening adds the `--perf` flag test with a real 10k-event fixture. The number here is the Phase 3 baseline.
 
 ## Resolved entries
 

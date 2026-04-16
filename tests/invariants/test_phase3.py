@@ -192,7 +192,7 @@ async def test_rule12_synthetic_cross_counterparty_detected(db) -> None:
     await db.commit()
 
     state = get_halt_state()
-    state.release()
+    state.clear()
 
     checker = InvariantChecker(db, persona_id=persona.id)
     violations = await checker.run_scan()
@@ -202,7 +202,7 @@ async def test_rule12_synthetic_cross_counterparty_detected(db) -> None:
     assert cross_cp[0].severity == "critical"
     assert state.is_halted
 
-    state.release()
+    state.clear()
 
 
 # ---- Rule 14: citation checks ----
@@ -322,7 +322,7 @@ async def test_full_scan_on_valid_data_clean(db) -> None:
     await db.commit()
 
     state = get_halt_state()
-    state.release()
+    state.clear()
 
     checker = InvariantChecker(db, persona_id=persona.id)
     violations = await checker.run_scan()
@@ -331,4 +331,4 @@ async def test_full_scan_on_valid_data_clean(db) -> None:
     assert len(critical) == 0, f"Unexpected critical violations on valid data: {critical}"
     assert not state.is_halted
 
-    state.release()
+    state.clear()

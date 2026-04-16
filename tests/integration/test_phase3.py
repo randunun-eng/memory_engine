@@ -22,9 +22,11 @@ from memory_engine.healing.halt import (
     assert_not_halted,
     engage_halt,
     get_halt_state,
+    load_halt_state,
     release_halt,
 )
 from memory_engine.healing.invariants import Violation
+from memory_engine.healing.loop import healer_loop
 from memory_engine.healing.repair import (
     repair_distinct_count_mismatch,
     repair_missing_provenance,
@@ -223,7 +225,7 @@ async def test_warning_violation_logs_but_does_not_halt(db) -> None:
 
     # Reset halt state from any prior test
     state = get_halt_state()
-    state.release()
+    state.clear()
 
     checker = InvariantChecker(db, persona_id=persona.id)
     violations = await checker.run_scan()
@@ -244,7 +246,7 @@ async def test_warning_violation_logs_but_does_not_halt(db) -> None:
 async def test_critical_violation_halts_system(db) -> None:
     """A critical invariant violation engages the halt mechanism."""
     state = get_halt_state()
-    state.release()  # clean slate
+    state.clear()  # clean slate
 
     await engage_halt(
         db,
@@ -261,7 +263,7 @@ async def test_critical_violation_halts_system(db) -> None:
 async def test_assert_not_halted_raises_when_halted(db) -> None:
     """assert_not_halted raises InvariantViolation when system is halted."""
     state = get_halt_state()
-    state.release()
+    state.clear()
 
     await engage_halt(
         db,
@@ -274,13 +276,13 @@ async def test_assert_not_halted_raises_when_halted(db) -> None:
         assert_not_halted()
 
     # Cleanup
-    state.release()
+    state.clear()
 
 
 async def test_halt_release_clears_state(db) -> None:
     """release_halt clears the in-memory flag and marks healing_log resolved."""
     state = get_halt_state()
-    state.release()
+    state.clear()
 
     await engage_halt(
         db,
@@ -306,7 +308,7 @@ async def test_halt_release_clears_state(db) -> None:
 async def test_halt_persists_to_healing_log(db) -> None:
     """engage_halt writes an escalated entry to healing_log."""
     state = get_halt_state()
-    state.release()
+    state.clear()
 
     await engage_halt(
         db,
@@ -324,13 +326,13 @@ async def test_halt_persists_to_healing_log(db) -> None:
     assert row["status"] == "escalated"
     assert row["persona_id"] == 1
 
-    state.release()
+    state.clear()
 
 
 async def test_scanner_triggers_halt_on_critical(db) -> None:
     """End-to-end: checker finds critical violation → system halts."""
     state = get_halt_state()
-    state.release()
+    state.clear()
 
     # Drop trigger = guaranteed critical
     await db.execute("DROP TRIGGER IF EXISTS events_immutable_update")
@@ -342,7 +344,7 @@ async def test_scanner_triggers_halt_on_critical(db) -> None:
     assert state.is_halted
     assert "events_immutable" in (state.invariant_name or "")
 
-    state.release()
+    state.clear()
 
 
 # ---- Auto-repair tests ----
@@ -427,3 +429,170 @@ async def test_repair_missing_provenance_quarantines(db) -> None:
     )
     row = await cursor.fetchone()
     assert row is not None
+
+
+# ---- Halt durability tests ----
+
+
+async def test_halt_survives_simulated_restart(db) -> None:
+    """Halt state persists in halt_state table and loads on 'restart'.
+
+    Simulates a process restart by:
+    1. Engaging halt (writes to halt_state table)
+    2. Clearing in-memory state (simulates process death)
+    3. Loading from DB (simulates new process startup)
+    4. Asserting halt is active
+    """
+    state = get_halt_state()
+    state.clear()
+
+    await engage_halt(
+        db,
+        invariant_name="test_durability",
+        details="Testing halt survives restart",
+        persona_id=None,
+    )
+    assert state.is_halted
+
+    # Simulate process death: clear in-memory state
+    state.clear()
+    assert not state.is_halted
+
+    # Simulate new process startup: load from DB
+    await load_halt_state(db)
+    assert state.is_halted
+    assert state.invariant_name == "test_durability"
+
+    # Cleanup
+    await release_halt(db, operator="test", reason="cleanup")
+
+
+async def test_halt_release_is_durable(db) -> None:
+    """After release, halt_state.active=0 persists across 'restart'."""
+    state = get_halt_state()
+    state.clear()
+
+    await engage_halt(
+        db,
+        invariant_name="test_release_durable",
+        details="Testing release durability",
+        persona_id=None,
+    )
+    await release_halt(db, operator="test_op", reason="all clear")
+    assert not state.is_halted
+
+    # Simulate restart
+    state.clear()
+    await load_halt_state(db)
+    assert not state.is_halted
+
+
+async def test_halt_state_table_has_engaged_at(db) -> None:
+    """engage_halt records engaged_at timestamp in halt_state table."""
+    state = get_halt_state()
+    state.clear()
+
+    await engage_halt(
+        db,
+        invariant_name="test_timestamp",
+        details="Checking engaged_at",
+        persona_id=None,
+    )
+
+    cursor = await db.execute(
+        "SELECT engaged_at, active FROM halt_state WHERE id = 1"
+    )
+    row = await cursor.fetchone()
+    assert row is not None
+    assert row["active"] == 1
+    assert row["engaged_at"] is not None
+
+    state.clear()
+    await release_halt(db, operator="test", reason="cleanup")
+
+
+# ---- Healer loop tests ----
+
+
+async def test_healer_loop_runs_one_scan(db) -> None:
+    """The healer loop completes at least one scan before being cancelled."""
+    state = get_halt_state()
+    state.clear()
+
+    # Initialize halt_state table
+    await load_halt_state(db)
+
+    # Drop a trigger to guarantee a critical violation
+    await db.execute("DROP TRIGGER IF EXISTS events_immutable_update")
+    await db.commit()
+
+    # Run the loop with a very short interval, cancel after first scan
+    import asyncio
+
+    scan_complete = asyncio.Event()
+    original_run_scan = InvariantChecker.run_scan
+
+    async def patched_run_scan(self):  # type: ignore[no-untyped-def]
+        result = await original_run_scan(self)
+        scan_complete.set()
+        return result
+
+    InvariantChecker.run_scan = patched_run_scan  # type: ignore[assignment]
+
+    try:
+        task = asyncio.create_task(
+            healer_loop(db, interval=0.1, persona_id=None)
+        )
+
+        # Wait for the scan to complete (with timeout)
+        await asyncio.wait_for(scan_complete.wait(), timeout=5.0)
+
+        # The loop should have detected the missing trigger and halted
+        assert state.is_halted
+        assert "events_immutable" in (state.invariant_name or "")
+
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    finally:
+        InvariantChecker.run_scan = original_run_scan  # type: ignore[assignment]
+        state.clear()
+
+
+async def test_healer_loop_survives_exception(db) -> None:
+    """The healer loop continues running even if a scan raises."""
+    import asyncio
+
+    await load_halt_state(db)
+
+    scan_count = 0
+    original_run_scan = InvariantChecker.run_scan
+
+    async def failing_then_working_scan(self):  # type: ignore[no-untyped-def]
+        nonlocal scan_count
+        scan_count += 1
+        if scan_count == 1:
+            msg = "Simulated failure"
+            raise RuntimeError(msg)
+        return await original_run_scan(self)
+
+    InvariantChecker.run_scan = failing_then_working_scan  # type: ignore[assignment]
+
+    try:
+        task = asyncio.create_task(
+            healer_loop(db, interval=0.05, persona_id=None)
+        )
+
+        # Wait enough time for at least 2 scans
+        await asyncio.sleep(0.3)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # First scan raised, but loop continued — at least 2 scans ran
+        assert scan_count >= 2
+
+    finally:
+        InvariantChecker.run_scan = original_run_scan  # type: ignore[assignment]
+        get_halt_state().clear()
