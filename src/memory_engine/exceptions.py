@@ -35,3 +35,30 @@ class ScopeViolation(InvariantViolation):
 
 class CrossCounterpartyLeak(InvariantViolation):
     """Cross-counterparty data exposure detected. Always critical."""
+
+
+# ---- Policy plane errors ----
+
+
+class PromptNotFound(MemoryEngineError):
+    """No active prompt template for the requested site."""
+
+
+class DispatchError(MemoryEngineError):
+    """LLM call failed during dispatch."""
+
+
+class LLMResponseParseError(MemoryEngineError):
+    """LLM response could not be parsed into expected structure."""
+
+
+# ---- Grounding errors ----
+
+
+class GroundingRejection(MemoryEngineError):
+    """Candidate neuron rejected by the grounding gate."""
+
+    def __init__(self, reason: str, detail: str | None = None) -> None:
+        self.reason = reason
+        self.detail = detail
+        super().__init__(f"Grounding rejected: {reason}" + (f" ({detail})" if detail else ""))
