@@ -347,8 +347,59 @@ async def test_recall_latency_10k_hybrid(hybrid_db, embedder) -> None:
 
 
 @pytest.mark.perf
+async def test_recall_latency_10k_production_realistic(hybrid_db, embedder) -> None:
+    """Production-realistic latency: embed query + hybrid recall, measured together.
+
+    This is what the HTTP route actually experiences. Phase 1 shipped
+    Option A (caller pre-computes embedding), so this wraps recall()
+    with an embedder.encode() call to measure the combined cost.
+
+    Reports:
+    - Combined (embed + recall): what /v1/recall would see in production
+    - Recall-only (pre-embedded): the retrieval sub-component
+    - Embed-only: the query embedding sub-component
+    """
+    # Warm up embedder and recall
+    embedder.encode(["warmup"])
+    warmup_emb = embedder.encode(["warmup"]).tolist()[0]
+    await recall(
+        hybrid_db, persona_id=1, query="warmup", lens="self", top_k=10,
+        query_embedding=warmup_emb, embedder_rev=_EMBEDDER_REV,
+    )
+
+    combined_latencies: list[float] = []
+    recall_latencies: list[float] = []
+    embed_latencies: list[float] = []
+
+    for query_text, lens in _QUERIES:
+        for _ in range(5):
+            # Combined: embed + recall
+            t_start = time.perf_counter()
+
+            t_embed_start = time.perf_counter()
+            emb = embedder.encode([query_text]).tolist()[0]
+            embed_latencies.append((time.perf_counter() - t_embed_start) * 1000)
+
+            t_recall_start = time.perf_counter()
+            await recall(
+                hybrid_db, persona_id=1, query=query_text, lens=lens, top_k=10,
+                query_embedding=emb, embedder_rev=_EMBEDDER_REV,
+            )
+            recall_latencies.append((time.perf_counter() - t_recall_start) * 1000)
+
+            combined_latencies.append((time.perf_counter() - t_start) * 1000)
+
+    _report("Production-realistic (embed+recall) @ 10k", combined_latencies)
+    _report("  Recall sub-component only", recall_latencies)
+    _report("  Query embed sub-component only", embed_latencies)
+
+    p99 = statistics.quantiles(combined_latencies, n=100)[98]
+    assert p99 < 800, f"Production-realistic p99 {p99:.1f}ms exceeds 800ms ceiling"
+
+
+@pytest.mark.perf
 async def test_query_embedding_latency(embedder) -> None:
-    """Measure query embedding latency separately (not part of recall())."""
+    """Measure query embedding latency in isolation (steady-state, post-warmup)."""
     query_texts = [q for q, _ in _QUERIES]
 
     # Warm up
@@ -361,7 +412,7 @@ async def test_query_embedding_latency(embedder) -> None:
             embedder.encode([q])
             latencies.append((time.perf_counter() - start) * 1000)
 
-    _report("Query embedding (MiniLM, single query)", latencies)
+    _report("Query embedding (MiniLM, single query, steady-state)", latencies)
 
 
 @pytest.mark.perf

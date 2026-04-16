@@ -9,6 +9,8 @@ without synapses, groups, or MCP signing. Low cost, high canary value.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from memory_engine.retrieval import recall
@@ -39,6 +41,77 @@ async def test_recall_never_writes_neurons_synchronously(seeded_db) -> None:
     cursor = await seeded_db.execute("SELECT count(*) AS c FROM neurons")
     after = (await cursor.fetchone())["c"]
     assert after == before, "recall() mutated neurons — rule 7 violation"
+
+
+async def test_emit_trace_async_does_not_block_caller(seeded_db, monkeypatch) -> None:
+    """Rule 7 (strong form): emit_trace_async returns before the trace write completes.
+
+    Monkeypatches append_event with an artificially slow version, then
+    calls emit_trace_async and checks three properties:
+    - emit_trace_async returns synchronously (it's a def, not async def)
+    - The write was scheduled (write_started is set after one event loop tick)
+    - The write hasn't finished when the caller resumes (write_finished is NOT set)
+    - The write does eventually complete (the task-retention set keeps it alive)
+    """
+    import time
+    from unittest.mock import AsyncMock
+
+    import memory_engine.retrieval.trace as trace_mod
+    from memory_engine.retrieval.trace import _background_tasks, emit_trace_async
+
+    write_started = asyncio.Event()
+    write_finished = asyncio.Event()
+
+    async def slow_append_event(*args, **kwargs):
+        write_started.set()
+        await asyncio.sleep(0.5)
+        write_finished.set()
+
+    monkeypatch.setattr(trace_mod, "append_event", slow_append_event)
+
+    # Build a fake conn_factory that returns a mock connection
+    # (the real append_event is monkeypatched, so conn is never used)
+    mock_conn = AsyncMock()
+    mock_conn.close = AsyncMock()
+
+    async def fake_conn_factory():
+        return mock_conn
+
+    import base64
+
+    from memory_engine.policy.signing import generate_keypair
+
+    priv, pub = generate_keypair()
+    pub_b64 = base64.b64encode(pub).decode("ascii")
+
+    t0 = time.perf_counter()
+    emit_trace_async(
+        conn_factory=fake_conn_factory,
+        persona_id=1,
+        query="test",
+        lens="self",
+        top_neuron_ids=[1, 2],
+        latency_ms=10,
+        private_key=priv,
+        public_key_b64=pub_b64,
+    )
+    elapsed = time.perf_counter() - t0
+
+    # Function returned synchronously — should be near-instant
+    assert elapsed < 0.05, f"emit_trace_async took {elapsed:.3f}s — not synchronous"
+
+    # Yield to event loop so the background task can start
+    await asyncio.sleep(0)
+
+    assert write_started.is_set(), "trace was never scheduled"
+    assert not write_finished.is_set(), "caller blocked until trace completed"
+
+    # Verify the task is held by the module-level set
+    assert len(_background_tasks) > 0, "no tasks in _background_tasks — GC risk"
+
+    # Let the background task finish cleanly
+    await asyncio.wait_for(write_finished.wait(), timeout=2.0)
+    assert write_finished.is_set(), "background trace task never completed"
 
 
 # ---- Rule 12: cross-counterparty isolation ----

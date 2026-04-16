@@ -18,8 +18,13 @@ from memory_engine.policy.signing import canonical_signing_message, sign
 
 logger = logging.getLogger(__name__)
 
+# Module-level set that holds strong references to fire-and-forget tasks.
+# Without this, Python's GC can collect tasks mid-execution because
+# asyncio.create_task only returns a weak-referenceable object.
+_background_tasks: set[asyncio.Task[None]] = set()
 
-async def emit_trace_async(
+
+def emit_trace_async(
     conn_factory: Callable[[], Coroutine[Any, Any, Any]],
     persona_id: int,
     query: str,
@@ -31,8 +36,11 @@ async def emit_trace_async(
 ) -> None:
     """Enqueue a retrieval_trace event. Does not block the caller.
 
-    Uses asyncio.create_task on a fresh connection so the caller returns
-    immediately. Phase 6 replaces this with a bounded queue.
+    Creates a background task on the running event loop. The task
+    opens a fresh connection (via conn_factory), writes the trace
+    event, and closes the connection. The caller returns immediately.
+
+    Phase 6 replaces this with a bounded queue.
     """
 
     async def _write() -> None:
@@ -64,7 +72,6 @@ async def emit_trace_async(
         except Exception:
             logger.warning("Failed to emit retrieval trace", exc_info=True)
 
-    _background_tasks: set[asyncio.Task[None]] = set()
     task = asyncio.create_task(_write())
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

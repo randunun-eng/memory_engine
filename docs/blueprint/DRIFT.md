@@ -9,6 +9,7 @@ Entries are append-only. Once resolved, the entry stays with its resolution note
 | 2026-04-16 | migration/phase0 | Removed `WHEN OLD.type != 'halted'` guard on `events_immutable_update` trigger; changed trigger mechanism from `RAISE(ABORT, ...)` to non-existent-table reference to produce `OperationalError` instead of `IntegrityError` | Accepted — guard was speculative (halt events are inserted, never updated) and weakened rule 1 by creating an exception with no consumer; error type change aligns with what invariant tests check, and `OperationalError` is semantically more correct than `IntegrityError` for an immutability enforcement | Resolved |
 | 2026-04-16 | retrieval/phase1 | BM25 score filter changed from `> 0.0` to `!= 0.0` to handle rank-bm25 negative IDF in small corpora | Accepted — BM25Okapi produces negative IDF scores when corpus has < 3 documents, which made temporal as_of queries (where the matching corpus is often 1-2 documents) return empty; non-matching docs always score exactly 0.0 so `!= 0.0` correctly preserves relevance signal | Resolved |
 | 2026-04-16 | retrieval/phase1 | BM25 index is rebuilt from scratch on every `recall()` call instead of being cached/incremental | Accepted as Phase 1 simplification — p99 is 19ms at 10k neurons so not a bottleneck yet; incremental maintenance deferred to Phase 6 when sustained QPS matters | Open |
+| 2026-04-16 | retrieval/phase1 | `emit_trace_async` task retention set was local variable (GC could collect tasks mid-execution); fixed to module-level `_background_tasks` set; also changed from `async def` to `def` since it was never awaited | Bug fix — the original pattern created `_background_tasks: set` inside the function body, so it went out of scope on return and the task strong reference was lost; under load traces would silently vanish | Resolved |
 
 ## Conventions
 
@@ -45,3 +46,11 @@ Both changes accepted as improvements over the blueprint spec.
 This surfaces in `as_of` temporal queries where the lens + temporal filter narrows the corpus to 1-2 documents (e.g., querying a superseded neuron at a point in time where it was the only match). Non-matching documents always score exactly `0.0`, so changing the filter to `!= 0.0` correctly preserves the relevance signal without introducing false positives.
 
 The blueprint spec doesn't prescribe BM25 implementation details, so this is an implementation decision rather than a blueprint divergence. Accepted.
+
+### 2026-04-16: Fire-and-forget task retention bug (retrieval trace.py)
+
+`emit_trace_async()` used `asyncio.create_task()` with the task-retention `_background_tasks` set, but the set was declared as a **local variable** inside the function body. When the function returned, the set went out of scope. Python's GC could then collect the set and with it the only strong reference to the task, causing the task to be silently cancelled mid-execution.
+
+Under low load (tests, single queries) this would rarely manifest because the task typically completes before GC runs. Under sustained load (75+ QPS), the probability of a task being collected mid-write increases, causing retrieval traces to silently vanish. There's no error, no log — the task just disappears.
+
+Fix: hoist `_background_tasks` to module level. Also changed `emit_trace_async` from `async def` to `def` since it was never awaited — the function schedules work and returns synchronously, which is clearer in the type signature.
