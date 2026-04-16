@@ -8,7 +8,32 @@ from v1.0 onward; pre-1.0 versions are 0.<phase>.<patch>.
 
 ## [Unreleased]
 
-*(nothing yet — Phase 3 work will land here)*
+*(nothing yet — Phase 4 work will land here)*
+
+---
+
+## [0.4.0] - 2026-04-16
+
+### Added
+- Migration 003: healing_log table with severity/status CHECK constraints and partial indexes (`migrations/003_invariants.sql`).
+- Invariant registry: 21 declarative checks across all 16 governance rules, using raw SQL exclusively (`healing/invariants.py`).
+- Invariant checker: runs full or critical-only scans, records violations to healing_log, triggers halt on critical (`healing/checker.py`).
+- Halt mechanism: in-memory HaltState singleton + durable healing_log record; `assert_not_halted()` gate for API handlers (`healing/halt.py`).
+- Auto-repair library: `repair_missing_provenance` (quarantines neuron), `repair_distinct_count_mismatch` (corrects count) (`healing/repair.py`).
+- Rule 1: trigger existence check queries sqlite_master for events_immutable_update and events_immutable_delete (schema drift defense).
+- Rule 12: 3 checks — cross-counterparty source mismatch, counterparty_fact requires counterparty_id, self/domain facts must not have counterparty_id.
+- Rule 14: 2 checks — empty source_event_ids, dangling citations to non-existent events.
+- Rule 15: 2 checks — distinct_source_count > source_count, distinct count vs actual unique source IDs.
+- Phase 3 test suite: 12 integration + 13 invariant tests, all passing.
+
+### Verified
+- All 16 governance rules have at least one registered invariant check (meta-test).
+- Rules 12, 14, 15 have multiple checks covering different attack vectors.
+- Critical violations engage halt; warnings log but don't halt.
+- Halt release clears in-memory flag and marks healing_log entries resolved.
+- Synthetic cross-counterparty injection detected in single scan.
+
+Refs: phase-3-complete
 
 ---
 
