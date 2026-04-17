@@ -1,0 +1,132 @@
+{
+  "description": "memory_engine Per-Persona Deep-Dive. Parameterized by persona for diagnosis.",
+  "editable": true,
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [{ "expr": "wiki_v3_neurons_total{persona=~\"$persona\"}", "refId": "A" }],
+      "title": "Neurons (total)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "rate(wiki_v3_events_appended_total{persona=~\"$persona\"}[5m])",
+          "refId": "A"
+        }
+      ],
+      "title": "Ingest rate",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "wiki_v3_quarantine_depth{persona=~\"$persona\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Quarantine depth",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "wiki_v3_consolidator_lag_seconds{persona=~\"$persona\"}",
+          "refId": "A"
+        }
+      ],
+      "title": "Consolidator lag",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "rate(wiki_v3_grounding_gate_verdict_total{persona=~\"$persona\"}[1h])",
+          "legendFormat": "{{verdict}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Grounding verdicts (rate/s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "rate(wiki_v3_persona_output_verdict_total{persona=~\"$persona\"}[1h])",
+          "legendFormat": "{{verdict}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Outbound verdicts (rate/s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Identity drift flags by type for this persona.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "increase(wiki_v3_identity_flag_total{persona=~\"$persona\"}[24h])",
+          "legendFormat": "{{flag_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Identity drift flags (24h)",
+      "type": "bargauge"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "LLM cost per site for this persona.",
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "increase(wiki_v3_llm_cost_usd_total{persona=~\"$persona\"}[24h])",
+          "legendFormat": "{{site}}",
+          "refId": "A"
+        }
+      ],
+      "title": "LLM cost by site (24h)",
+      "type": "bargauge"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "tags": ["memory-engine", "per-persona"],
+  "templating": {
+    "list": [
+      {
+        "datasource": "Prometheus",
+        "definition": "label_values(wiki_v3_neurons_total, persona)",
+        "name": "persona",
+        "query": "label_values(wiki_v3_neurons_total, persona)",
+        "refresh": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timezone": "utc",
+  "title": "memory_engine — Per-Persona Deep-Dive",
+  "uid": "memory-engine-persona",
+  "version": 1
+}

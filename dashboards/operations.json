@@ -1,0 +1,226 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "memory_engine Operations Overview. One-screen dashboard for on-call. Answer 'is everything OK?' in under 30 seconds.",
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "iteration": 1713273600000,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "description": "Hard invariant violations in the last 24h. MUST be 0 — privacy/leak/scope violations halt the system.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(wiki_v3_invariant_violation_total{severity=\"critical\"}[24h]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Hard invariant violations (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Events appended per second per persona. Drop to 0 while process up = EventLogStalled alert.",
+      "gridPos": { "h": 6, "w": 9, "x": 6, "y": 0 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "rate(wiki_v3_events_appended_total[5m])",
+          "legendFormat": "{{persona}} / {{type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Ingest rate (events/s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Recall latency percentiles. Target p50 < 0.15s, p99 < 0.8s.",
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 0 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(wiki_v3_recall_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(wiki_v3_recall_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(wiki_v3_recall_latency_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99",
+          "refId": "C"
+        }
+      ],
+      "title": "Recall latency p50/p95/p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Grounding gate pass rate. Drop below 60% = extractor regression.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.6 },
+              { "color": "green", "value": 0.75 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 6 },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(wiki_v3_grounding_gate_verdict_total{verdict=\"accepted\"}[1h])) / sum(rate(wiki_v3_grounding_gate_verdict_total[1h]))",
+          "refId": "A"
+        }
+      ],
+      "title": "Grounding gate pass rate",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Unreviewed quarantine entries per table. Growing without review = operator attention needed.",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 6 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "wiki_v3_quarantine_depth",
+          "legendFormat": "{{persona}} / {{table}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Quarantine depth",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 6 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "wiki_v3_event_log_size_bytes",
+          "legendFormat": "{{persona}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Event log size (bytes)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "LLM spend in last 24h. Projected monthly in tooltip.",
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } },
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 6 },
+      "id": 7,
+      "targets": [
+        {
+          "expr": "sum(increase(wiki_v3_llm_cost_usd_total[24h]))",
+          "refId": "A"
+        }
+      ],
+      "title": "LLM spend (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "MCP authentication failures. Sustained non-zero = possible compromise.",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+      "id": 8,
+      "targets": [
+        {
+          "expr": "rate(wiki_v3_mcp_auth_failures_total[5m])",
+          "legendFormat": "{{mcp_name}} / {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "title": "MCP auth failures (rate/s)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Time since last successful backup. Alert at > 1h.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3600 },
+              { "color": "red", "value": 3700 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+      "id": 9,
+      "targets": [
+        {
+          "expr": "wiki_v3_backup_last_success_seconds",
+          "legendFormat": "{{persona}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Backup freshness",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["memory-engine", "operations"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "memory_engine — Operations Overview",
+  "uid": "memory-engine-ops",
+  "version": 1
+}

@@ -1,0 +1,119 @@
+{
+  "description": "memory_engine Memory Health. Weekly review dashboard — tier growth, distinct-source ratio, drift flags.",
+  "editable": true,
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "description": "Neurons per tier per persona. Stacked time-series shows memory growth shape.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "targets": [
+        {
+          "expr": "wiki_v3_neurons_total",
+          "legendFormat": "{{persona}} / {{tier}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Neurons per tier (stacked)",
+      "type": "timeseries",
+      "options": { "legend": { "displayMode": "table", "placement": "right" } }
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "distinct_source_count / source_count. Below 0.8 = echo inflation (mem0 failure mode). Red line at 0.8.",
+      "fieldConfig": {
+        "defaults": {
+          "max": 1.0,
+          "min": 0.0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.6 },
+              { "color": "green", "value": 0.8 }
+            ]
+          }
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "id": 2,
+      "targets": [
+        {
+          "expr": "wiki_v3_distinct_source_ratio",
+          "legendFormat": "{{persona}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Distinct-source ratio per persona",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Supersession events per second. Bi-temporal updates. Spike = contradiction cascade.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "id": 3,
+      "targets": [
+        {
+          "expr": "rate(wiki_v3_events_appended_total{type=\"neuron_superseded\"}[1h])",
+          "legendFormat": "{{persona}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Supersession rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Neurons pruned per time period.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "id": 4,
+      "targets": [
+        {
+          "expr": "rate(wiki_v3_events_appended_total{type=\"neuron_pruned\"}[1h])",
+          "legendFormat": "{{persona}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Pruning rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Identity drift flags by type per day. Heatmap reveals drift patterns.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "id": 5,
+      "targets": [
+        {
+          "expr": "sum by (flag_type) (increase(wiki_v3_identity_flag_total[24h]))",
+          "legendFormat": "{{flag_type}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Identity drift flags (24h)",
+      "type": "bargauge"
+    },
+    {
+      "datasource": "Prometheus",
+      "description": "Current shadow prompt sample counts per site. Need 100+ samples before promotion.",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "id": 6,
+      "targets": [
+        {
+          "expr": "wiki_v3_prompt_shadow_samples",
+          "legendFormat": "{{site}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Prompt shadow samples (current)",
+      "type": "table"
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 38,
+  "tags": ["memory-engine", "memory-health"],
+  "time": { "from": "now-7d", "to": "now" },
+  "timezone": "utc",
+  "title": "memory_engine — Memory Health",
+  "uid": "memory-engine-health",
+  "version": 1
+}

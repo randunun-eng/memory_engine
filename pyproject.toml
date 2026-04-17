@@ -113,6 +113,10 @@ ignore = [
 "src/memory_engine/healing/invariants.py" = ["S608"]  # WHERE clauses built from hardcoded strings, not user input
 "tests/invariants/test_phase1_retrieval.py" = ["N802"]  # T3 canary test names per spec
 "tests/invariants/test_phase5.py" = ["N802"]  # T3/T11 release gate test names per spec
+<<<<<<< Updated upstream
+=======
+"tests/integration/test_phase6.py" = ["S603", "S607"]  # subprocess calls to our own bin/ scripts
+>>>>>>> Stashed changes
 
 [tool.ruff.lint.isort]
 known-first-party = ["memory_engine"]

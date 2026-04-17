@@ -1,0 +1,110 @@
+# memory_engine Prometheus alert rules.
+#
+# Every alert has:
+#   - a severity (critical or warning)
+#   - a condition
+#   - a runbook link under docs/runbooks/
+#
+# Alerts without runbooks are forbidden.
+
+groups:
+  - name: memory_engine_critical
+    rules:
+      - alert: HardInvariantViolation
+        expr: increase(wiki_v3_invariant_violation_total{severity="critical"}[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          runbook: docs/runbooks/hard_invariant.md
+          description: "Privacy/leak/scope invariant halted the system. System is in read-only."
+
+      - alert: MCPAuthFailureSpike
+        expr: rate(wiki_v3_mcp_auth_failures_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          runbook: docs/runbooks/mcp_compromise.md
+          description: "Sustained MCP authentication failures. Possible compromise or rotation issue."
+
+      - alert: EventLogStalled
+        expr: rate(wiki_v3_events_appended_total[10m]) == 0 and up{job="memory_engine"} == 1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          runbook: docs/runbooks/ingest_stalled.md
+          description: "Process healthy but no events appending."
+
+      - alert: BackupStale
+        expr: wiki_v3_backup_last_success_seconds > 3700
+        labels:
+          severity: critical
+        annotations:
+          runbook: docs/runbooks/backup_stale.md
+          description: "Last successful backup > 1h ago. RPO at risk."
+
+  - name: memory_engine_warning
+    rules:
+      - alert: DistinctSourceRatioDrop
+        expr: wiki_v3_distinct_source_ratio < 0.8
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          runbook: docs/runbooks/echo_inflation.md
+          description: "Reinforcement-on-repeat inflating source_count. Possible extractor loop."
+
+      - alert: QuarantineDepthGrowing
+        expr: wiki_v3_quarantine_depth > 100 and increase(wiki_v3_quarantine_depth[24h]) > 50
+        labels:
+          severity: warning
+        annotations:
+          runbook: docs/runbooks/quarantine_review.md
+          description: "Quarantine queue growing without review."
+
+      - alert: GroundingGateRejectRateHigh
+        expr: |
+          rate(wiki_v3_grounding_gate_verdict_total{verdict="reject"}[1h])
+            / rate(wiki_v3_grounding_gate_verdict_total[1h]) > 0.4
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          runbook: docs/runbooks/extractor_quality.md
+          description: "Grounding gate rejecting > 40%. Extractor prompt may be degraded."
+
+      - alert: RecallLatencyP99High
+        expr: histogram_quantile(0.99, sum(rate(wiki_v3_recall_latency_seconds_bucket[5m])) by (le)) > 1.5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          runbook: docs/runbooks/retrieval_latency.md
+          description: "Retrieval p99 > 1.5s. Users feel this."
+
+      - alert: LLMSpendRateHigh
+        expr: rate(wiki_v3_llm_cost_usd_total[1h]) * 24 * 30 > (monthly_budget_usd * 1.5)
+        labels:
+          severity: warning
+        annotations:
+          runbook: docs/runbooks/cost_overrun.md
+          description: "Projected spend exceeds 150% of configured budget."
+
+      - alert: ConsolidatorLagging
+        expr: wiki_v3_consolidator_lag_seconds > 3600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          runbook: docs/runbooks/consolidator_lag.md
+          description: "Consolidator falling behind ingest. Memory may not reach semantic tier in time."
+
+      - alert: IdentityFlagSpike
+        expr: rate(wiki_v3_identity_flag_total[1h]) > 5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          runbook: docs/runbooks/identity_drift.md
+          description: "Unusual number of identity-related flags. Investigate persona drift."
