@@ -62,3 +62,14 @@ class GroundingRejection(MemoryEngineError):
         self.reason = reason
         self.detail = detail
         super().__init__(f"Grounding rejected: {reason}" + (f" ({detail})" if detail else ""))
+
+
+# ---- Outbound errors ----
+
+
+class OutboundBlocked(MemoryEngineError):
+    """Outbound message blocked by approval pipeline."""
+
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"Outbound blocked: {reason}")

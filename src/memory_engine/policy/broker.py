@@ -113,3 +113,11 @@ register_site(
     "nonneg_judge",
     required={"draft_message", "non_negotiable_rule"},
 )
+
+
+# ---- Register Phase 4 sites ----
+
+register_site(
+    "self_contradiction_judge",
+    required={"draft_message", "self_facts"},
+)
