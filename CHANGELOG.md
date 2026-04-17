@@ -8,7 +8,108 @@ from v1.0 onward; pre-1.0 versions are 0.<phase>.<patch>.
 
 ## [Unreleased]
 
-*(nothing yet — Phase 4 work will land here)*
+*(nothing yet — Phase 7 work will land here)*
+
+---
+
+## [0.7.0] - 2026-04-16
+
+### Added
+- Migration 006: retrieval_traces (async reinforcement traces), prompt_shadow_logs (per-execution A/B logs), prompt_comparison_daily (aggregated daily metrics), backup_status (last successful backup per persona) (`migrations/006_observability.sql`).
+- Prometheus metric registry: thread-safe counter/gauge/histogram with Prometheus text exposition format, no external client library dependency (`observability/metrics.py`).
+- Structured JSON logger: JSONFormatter + StructuredLogger wrapper enforcing required fields ts/level/module/event (`observability/logging.py`).
+- Prompt shadow harness: `dispatch_with_shadow` runs active + optional shadow at configurable traffic percentage, logs comparisons, guarded by rng injection for deterministic testing (`policy/shadow.py`).
+- Daily comparison batch: `compute_daily_comparison` aggregates shadow logs into per-site metrics (sample count, latency delta, cost delta, output agreement rate).
+- Promotion and rollback: `promote_shadow` clears old active and promotes shadow (clearing shadow flag); `rollback_to_template` restores arbitrary previous template as active.
+- `bin/restore.sh`: decrypt → verify manifest + SQLite integrity_check → backup existing DB to `.pre-restore` → swap → restart engine. Supports S3/GCS/local artifact sources. Interactive confirmation unless `--force`.
+- `bin/drill.sh`: pulls latest backup → decrypts → verifies → measures elapsed vs RTO → writes `drills/YYYY-MM-DD.md` report with verdict, timing, integrity, row counts.
+- 3 Grafana dashboard JSONs: operations.json (on-call single-screen), memory_health.json (weekly review), per_persona.json (parameterized diagnosis) in `dashboards/`.
+- Prometheus alert rules file (`dashboards/alerts.yaml`): 4 critical (HardInvariantViolation, MCPAuthFailureSpike, EventLogStalled, BackupStale) + 7 warning (DistinctSourceRatioDrop, QuarantineDepthGrowing, GroundingGateRejectRateHigh, RecallLatencyP99High, LLMSpendRateHigh, ConsolidatorLagging, IdentityFlagSpike), each with runbook annotation.
+- 11 new runbooks in `docs/runbooks/` (hard_invariant, mcp_compromise, ingest_stalled, echo_inflation, quarantine_review, extractor_quality, retrieval_latency, cost_overrun, consolidator_lag, identity_drift, backup_stale), one page each with diagnostic steps and remediation.
+- Phase 6 test suite: 24 integration + 7 invariant tests, all passing.
+- **First DR drill completed**: `drills/2026-04-16.md` — verdict PASS, elapsed 0s, well under 2-hour RTO target.
+
+### Verified
+- Prometheus text exposition format renders counter, gauge, and histogram series with proper label escaping and +Inf histogram bucket.
+- Counter rejects negative increments (counters are monotonic).
+- JSONFormatter produces valid JSON with required fields (ts, level, module, event).
+- Shadow harness runs only active when no shadow configured; runs both when rng draw < traffic_pct; skips shadow when draw >= threshold.
+- Daily comparison aggregates shadow logs correctly (sample count, mean latency/cost, output agreement).
+- Promotion clears old active, activates shadow, clears shadow flag and traffic_pct.
+- Rollback restores arbitrary previous template as active in <60s (requirement per spec).
+- Meta-test: every alert has a corresponding runbook file.
+- Meta-test: all 3 dashboards parse as valid JSON; operations dashboard has all required panels.
+- Backup round-trip: actual `bin/backup.sh` → age-encrypt → `bin/restore.sh` → decrypt → integrity_check → row count match (tested via subprocess in test_phase6.py).
+
+Refs: phase-6-complete
+
+---
+
+## [0.6.0] - 2026-04-16
+
+### Added
+- Migration 005: mcp_sources table (per-persona MCP binding with Ed25519 public key + hashed bearer token), tombstones table (soft deletion / reingestion prevention), sender_hint column on events for group messages (`migrations/005_adapters.sql`).
+- Phone canonicalization: strips formatting, ensures E.164 with "whatsapp:+" prefix, validates 7-15 digit length (`adapters/whatsapp/canonicalize.py`).
+- Group JID canonicalization: normalizes to "whatsapp-group:<jid>" format, validates @g.us suffix.
+- MCP source management: register (generate bearer token, store public key), resolve_token (authenticate API requests), revoke (soft-delete) (`adapters/whatsapp/mcp.py`).
+- WhatsApp ingest pipeline: 8-step sequential processing — token resolution, signature verification, phone/JID canonicalization, counterparty lookup/create, tombstone check, payload construction, idempotency key, event append (`adapters/whatsapp/ingest.py`).
+- Group message handling: groups-as-counterparty with sender_hint stored on events for audit; sender_hint never creates sub-counterparties, never used in retrieval (`adapters/whatsapp/groups.py`).
+- Outbound preparation: integrates Phase 4 approval pipeline, creates persona_output event on approval, no event on block (`adapters/whatsapp/outbound.py`).
+- Forwarded message handling: attributes to forwarder, stores forwarded_from in payload, no counterparty for original author.
+- Image reference pass-through: stored in event payload, not processed (Phase 5 scope: text only).
+- Tombstone enforcement: checks counterparty, content_hash, and idempotency scopes.
+- append_event() extended with optional mcp_source_id and sender_hint parameters (set at INSERT time; immutability trigger prevents post-INSERT UPDATE).
+- T11 adversarial corpus: 21 prompts across 6 attack categories (direct injection, role-play, encoding tricks, context-window manipulation, indirect injection, SQL injection).
+- Phase 5 test suite: 18 integration + 9 invariant tests, all passing.
+
+### Fixed
+- Phase 4 blocked-event PII leak: drift flags and blocked ApprovalResult.text now contain PII-redacted text (rule 13 enforcement in audit trail).
+- LLM judge security documentation: added SECURITY NOTE in outbound/approval.py about nonneg_judge receiving unredacted text.
+
+### Verified
+- T3 release gate: 100% pass. 4 tests including 100-message/5-counterparty acceptance criterion. Zero cross-counterparty content leaks.
+- T11 release gate: 100% pass. 5 tests with 21-prompt adversarial corpus. Zero identity modifications, zero cross-counterparty leaks, zero outbound bypass, zero SQL injection impact.
+- Phone variants ("+94 77 123 4567", "+94-77-123-4567", "94771234567") all map to one counterparty.
+- Group A events fully isolated from Group B events.
+- Individual Alice events fully isolated from group events containing Alice as sender_hint.
+- Tombstones block reingestion at counterparty and content-hash scopes.
+- Idempotency key prevents duplicate WhatsApp message ingestion.
+
+Refs: phase-5-complete
+
+---
+
+## [0.5.0] - 2026-04-16
+
+### Added
+- Migration 004: identity_drift_flags + tone_profiles tables with CHECK constraints on flag_type and reviewer_action (`migrations/004_identity.sql`).
+- Identity document loader: parse/load/save YAML identity documents with self_facts, non_negotiables, forbidden_topics, deletion_policy (`identity/persona.py`).
+- Identity drift detection: flag_identity_drift writes to drift table for human review, check_forbidden_topics (substring match), check_self_fact_contradiction (negation heuristic) (`identity/drift.py`).
+- Outbound approval pipeline: 5-step sequential evaluation — non-negotiables, forbidden topics, self-contradiction, cross-counterparty redaction, PII redaction (`outbound/approval.py`).
+- Keyword-based non-negotiable evaluator: extracts patterns from rules ("never disclose X", "never discuss X", "never agree to X without Y") as fallback when no LLM dispatch available.
+- PII redactor: regex-based stripping of emails, phones, SSN-like patterns, API keys/tokens, with allowed-set bypass for active counterparty (`outbound/redactor.py`).
+- Cross-counterparty name redactor: queries DB for persona's counterparties, strips non-active names from outbound text.
+- Identity example template: `config/identity.example.yaml` with all supported fields.
+- New exception: OutboundBlocked for outbound pipeline blocking.
+- Prompt sites: nonneg_judge and self_contradiction_judge registered in broker.
+- Phase 4 test suite: 22 integration + 9 invariant tests, all passing.
+
+### Fixed
+- Blocked-event PII leak: drift flags and blocked ApprovalResult.text now contain PII-redacted text, not the original unredacted draft. The event log is immutable; a PII leak in the audit trail stays forever. Rule 13 (privacy > everything) enforced in the audit path.
+- Added SECURITY NOTE in outbound/approval.py docstring: nonneg_judge LLM receives unredacted text for accurate evaluation; operators using remote LLM APIs are sending counterparty PII to a third party and should configure routing accordingly.
+
+### Verified
+- Rule 11: drift flags never modify personas.identity_doc — identity remains authoritative, human-only.
+- Rule 13: privacy redaction applies after persona/factual checks pass (pillar hierarchy enforced).
+- Rule 13: blocked drift flags contain redacted PII, not raw PII (2 new invariant tests).
+- Non-negotiable enforcement blocks email/phone disclosure, unauthorized meeting agreement, unconfirmed pricing.
+- Forbidden topic detection blocks politics and other_clients_by_name.
+- Self-contradiction detection catches negations of self_facts.
+- PII redactor preserves allowed counterparty emails/phones.
+- Cross-counterparty redactor preserves active counterparty name while stripping others.
+- No identity doc scenario: outbound approved with warning (dev/test fallback).
+
+Refs: phase-4-complete
 
 ---
 
