@@ -61,12 +61,18 @@ async def append_event(
     signature: str,
     public_key_b64: str,
     idempotency_key: str | None = None,
+    mcp_source_id: int | None = None,
+    sender_hint: str | None = None,
 ) -> Event:
     """Append an event to the immutable log.
 
     Verifies signature before writing. Rejects duplicates by idempotency_key.
     Does not trigger consolidation; consolidator (Phase 2) picks up new events
     asynchronously.
+
+    Events are immutable (rule 1) — all fields must be set at INSERT time.
+    The mcp_source_id and sender_hint are included in the initial INSERT
+    because the immutability trigger prevents post-INSERT UPDATE.
 
     Args:
         conn: Active DB connection.
@@ -78,6 +84,8 @@ async def append_event(
         signature: Ed25519 signature of canonical_signing_message, base64.
         public_key_b64: The registered MCP public key for verification.
         idempotency_key: Unique per source. Prevents double-ingest.
+        mcp_source_id: Optional MCP source that produced this event (Phase 5+).
+        sender_hint: Optional sender within a group (Phase 5+). Audit only.
 
     Returns:
         The persisted Event with assigned id and recorded_at.
@@ -99,8 +107,9 @@ async def append_event(
             """
             INSERT INTO events
                 (persona_id, counterparty_id, type, scope,
-                 content_hash, idempotency_key, payload, signature)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 content_hash, idempotency_key, payload, signature,
+                 mcp_source_id, sender_hint)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 persona_id,
@@ -111,6 +120,8 @@ async def append_event(
                 idempotency_key,
                 payload_json,
                 signature,
+                mcp_source_id,
+                sender_hint,
             ),
         )
         await conn.commit()
