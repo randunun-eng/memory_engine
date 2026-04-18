@@ -309,7 +309,7 @@ Secrets live in `.env.local` (gitignored). Copy from `.env.example` at repo root
 | α.2 contact profiles | DONE | 6 relationship categories, profile-aware prompt injection |
 | Identity-leak fix | DONE | First-person framing; validated on draft #13 ("Hey Babi.") |
 | **P0 #1: scheduled encrypted backups** | **DONE** | `bin/backup-twincore.sh` + `bin/restore-twincore.sh`, age-encrypted (key at `~/.config/twincore/age-key.txt`). launchd `ai.twincore.backup` runs every 6h, RunAtLoad. Offsite dest: Google Drive (`~/Library/CloudStorage/GoogleDrive-randunun@gmail.com/My Drive/TwincoreBackups/`). Restore verified: manifest match + 4/4 SQLite PRAGMA integrity_check PASS. Known cosmetic: launchd TCC blocks stat-after-write on Drive path, so logged size shows 0 KB while actual file is ~4 MB (proven valid). Retention prune also can't delete from Drive via launchd; occasional manual cleanup required. |
-| P0 #2: Gemini rate-limit guard | PENDING | 15 RPM free-tier ceiling; currently silent 429 on bursts. |
+| **P0 #2: Gemini rate-limit guard** | **DONE** | Sliding 60s window limiter in `twin-agent/main.py` (`GeminiRateLimiter`). Caps at `GEMINI_MAX_RPM=14` (one slot below the 15 RPM free-tier), warns at `GEMINI_WARN_RPM=12`, sleeps until oldest slot ages out rather than letting 429 fire. 429 path parses `Retry-After` and applies a 1–60s server cooldown floor. Deployed 2026-04-18, twin-agent restart clean. |
 | P0 #3: whatsmeow drift monitor | PENDING | Upstream pin goes stale monthly; need weekly check against `tulir/whatsmeow` HEAD. |
 | P1 #4: eval baseline | PENDING | 100 queries + expected top-k + MRR@10 ≥ 0.6, P@5 ≥ 0.7. Design choices (Q1/Q2/Q3) still open. |
 | P1 #5: first quarantine review | PENDING | Phase 7 acceptance gate. |

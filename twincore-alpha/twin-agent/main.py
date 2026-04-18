@@ -24,6 +24,8 @@ import logging
 import os
 import sqlite3
 import sys
+import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -60,6 +62,12 @@ POLL_INTERVAL = int(os.environ.get("TWIN_POLL_INTERVAL_SEC", "3"))
 SYNC_FROM_ISO = os.environ["SYNC_FROM_ISO"]
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.7"))
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "500"))
+# Gemini free-tier ceiling for 2.5-flash is 15 RPM. We guard one below so a
+# burst never trips 429. Paid tier operators can raise via env.
+GEMINI_MAX_RPM = int(os.environ.get("GEMINI_MAX_RPM", "14"))
+# When within this many slots of the cap, we log a warning so the operator
+# sees creeping saturation before it matters.
+GEMINI_WARN_RPM = int(os.environ.get("GEMINI_WARN_RPM", "12"))
 PAUSE_FILE = Path("/var/twincore/PAUSE")
 # Renamed from last_processed_id — we track timestamp, not ID.
 # See twincore-alpha/DRIFT.md `twin-agent-assumed-integer-message-id`.
@@ -728,10 +736,98 @@ Reply in the same language/register they used (Sinhala script, Singlish romaniza
     return prompt
 
 
+class GeminiRateLimiter:
+    """Sliding 60-second window rate limiter for Gemini API calls.
+
+    Free-tier gemini-2.5-flash allows 15 RPM. Silent 429s during bursts mean
+    drafts just stop with no user-visible symptom — the control plane sees
+    nothing queued and the operator has to notice the gap. This limiter caps
+    us one slot below the ceiling (14 RPM default) and sleeps until the
+    oldest in-window call ages out rather than letting a 429 fire.
+
+    Also handles a 429 round-trip: if the server disagrees with our local
+    count (clock skew, shared key across containers, changed quota), we
+    consume a Retry-After hint up to 60s.
+    """
+
+    def __init__(self, max_rpm: int, warn_rpm: int) -> None:
+        self.max_rpm = max_rpm
+        self.warn_rpm = warn_rpm
+        self._window: deque[float] = deque()
+        self._lock = asyncio.Lock()
+        # Floor for 429-driven cooldown (monotonic clock).
+        self._server_cooldown_until: float = 0.0
+
+    def _prune(self, now: float) -> None:
+        cutoff = now - 60.0
+        while self._window and self._window[0] < cutoff:
+            self._window.popleft()
+
+    async def acquire(self) -> None:
+        """Block until a request slot is available, then reserve it."""
+        async with self._lock:
+            while True:
+                now = time.monotonic()
+                self._prune(now)
+
+                # Honour any server-initiated cooldown first.
+                if now < self._server_cooldown_until:
+                    wait = self._server_cooldown_until - now
+                    log.warning(
+                        "gemini rate-limit: server cooldown active, sleeping %.2fs",
+                        wait,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+
+                in_window = len(self._window)
+                if in_window >= self.max_rpm:
+                    # Sleep until the oldest slot ages out.
+                    wait = 60.0 - (now - self._window[0]) + 0.05
+                    log.warning(
+                        "gemini rate-limit: at cap %d/%d RPM, sleeping %.2fs",
+                        in_window,
+                        self.max_rpm,
+                        wait,
+                    )
+                    await asyncio.sleep(max(wait, 0.1))
+                    continue
+
+                if in_window >= self.warn_rpm:
+                    log.info(
+                        "gemini rate-limit: approaching cap %d/%d RPM",
+                        in_window,
+                        self.max_rpm,
+                    )
+
+                self._window.append(now)
+                return
+
+    def notify_429(self, retry_after_sec: float | None) -> None:
+        """Called after a 429. Sets a server-side cooldown floor."""
+        # Clamp to [1s, 60s] so we don't wedge the loop.
+        wait = 5.0 if retry_after_sec is None else retry_after_sec
+        wait = max(1.0, min(wait, 60.0))
+        self._server_cooldown_until = time.monotonic() + wait
+        log.warning(
+            "gemini rate-limit: 429 observed, backing off for %.1fs", wait
+        )
+
+
+gemini_limiter = GeminiRateLimiter(
+    max_rpm=GEMINI_MAX_RPM, warn_rpm=GEMINI_WARN_RPM
+)
+
+
 async def call_gemini(
     client: httpx.AsyncClient, system_prompt: str, user_message: str
 ) -> str | None:
-    """Call Gemini 2.5 Flash via OpenAI-compatible endpoint."""
+    """Call Gemini 2.5 Flash via OpenAI-compatible endpoint.
+
+    Guarded by a sliding-window rate limiter to keep us below the free-tier
+    15 RPM ceiling. See GeminiRateLimiter.
+    """
+    await gemini_limiter.acquire()
     try:
         r = await client.post(
             f"{GEMINI_BASE_URL}/chat/completions",
@@ -750,6 +846,20 @@ async def call_gemini(
             },
             timeout=30.0,
         )
+        if r.status_code == 429:
+            # Parse Retry-After if present; otherwise default backoff.
+            retry_after_raw = r.headers.get("retry-after")
+            retry_after: float | None = None
+            if retry_after_raw:
+                try:
+                    retry_after = float(retry_after_raw)
+                except ValueError:
+                    retry_after = None
+            gemini_limiter.notify_429(retry_after)
+            log.error(
+                "Gemini 429 rate-limited body=%s", r.text[:300]
+            )
+            return None
         if r.status_code >= 400:
             log.error("Gemini failed status=%d body=%s", r.status_code, r.text[:500])
             return None
