@@ -124,10 +124,14 @@ if [[ ! -s "$ARTIFACT" ]]; then
     exit 1
 fi
 
-SIZE=$(wc -c < "$ARTIFACT" | tr -d ' ')
+# Post-write steps below are non-fatal. If the backup destination is on a
+# macOS TCC-protected mount (Google Drive, iCloud, Dropbox), launchd-spawned
+# processes can write new files but may be denied stat/read on them —
+# cosmetic, the actual backup is already on disk.
+SIZE=$(wc -c < "$ARTIFACT" 2>/dev/null | tr -d ' ' || echo 0)
 SIZE_KB=$((SIZE / 1024))
 
-# --- 5. Retention prune ---
+# --- 5. Retention prune (also non-fatal on TCC-protected dests) ---
 find "$BACKUP_DEST" -name "twincore_*.tar.gz.age" -mtime +"$RETENTION_DAYS" -delete 2>/dev/null || true
 
 # --- 6. Report ---
