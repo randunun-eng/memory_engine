@@ -1,0 +1,125 @@
+name: twincore-alpha
+
+services:
+  # ==========================================================
+  # whatsapp-bridge — lharries/whatsapp-mcp Go bridge
+  # ==========================================================
+  whatsapp-bridge:
+    build:
+      context: ./whatsapp-bridge
+      dockerfile: Dockerfile
+    container_name: twincore-whatsapp-bridge
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./whatsapp-data:/app/whatsapp-bridge/store
+      - ./whatsapp-auth:/app/whatsapp-bridge/auth_info
+    environment:
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    networks:
+      - twincore
+    stdin_open: true
+    tty: true
+
+  # ==========================================================
+  # memory_engine — cloned from randunun-eng/memory_engine
+  # ==========================================================
+  memory-engine:
+    build:
+      context: ./memory_engine_service
+      dockerfile: Dockerfile
+    container_name: twincore-memory-engine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - ./memory-engine-data:/app/data
+      - ./personas:/app/personas:ro
+    environment:
+      - MEMORY_ENGINE_HTTP__HOST=0.0.0.0
+      - MEMORY_ENGINE_HTTP__PORT=4000
+      - MEMORY_ENGINE_VAULT_KEY=${MEMORY_ENGINE_VAULT_KEY}
+      # Nested pydantic-settings delimiter is __ (double underscore).
+      # Single-underscore MEMORY_ENGINE_DB_PATH is silently ignored — see
+      # twincore-alpha/DRIFT.md `env-var-delimiter-pydantic-settings`.
+      - MEMORY_ENGINE_DB__PATH=/app/data/engine.db
+      - PYTHONIOENCODING=utf-8
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    networks:
+      - twincore
+
+  # ==========================================================
+  # twin-agent — the reasoning layer
+  # ==========================================================
+  twin-agent:
+    build:
+      context: ./twin-agent
+      dockerfile: Dockerfile
+    container_name: twincore-twin-agent
+    restart: unless-stopped
+    depends_on:
+      - memory-engine
+      - whatsapp-bridge
+      - control-plane
+    volumes:
+      - ./whatsapp-data:/app/whatsapp-bridge-data:ro
+      - ./personas:/app/personas:ro
+      - ./twincore-state:/var/twincore
+    environment:
+      - PERSONA_SLUG=${PERSONA_SLUG}
+      - PERSONA_ID=${PERSONA_ID}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL}
+      - GEMINI_BASE_URL=${GEMINI_BASE_URL}
+      - MEMORY_ENGINE_URL=${MEMORY_ENGINE_URL}
+      - MEMORY_ENGINE_MCP_PRIVATE_KEY=${MEMORY_ENGINE_MCP_PRIVATE_KEY}
+      - WHATSAPP_BRIDGE_URL=${WHATSAPP_BRIDGE_URL}
+      - WHATSAPP_BRIDGE_DB_PATH=/app/whatsapp-bridge-data/messages.db
+      - CONTROL_PLANE_URL=http://control-plane:4500
+      - TWIN_POLL_INTERVAL_SEC=${TWIN_POLL_INTERVAL_SEC}
+      - AUTO_REPLY_ENABLED=${AUTO_REPLY_ENABLED}
+      - SYNC_FROM_ISO=${SYNC_FROM_ISO}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE}
+      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS}
+      # Self-chat command interface (\u03b1.1)
+      - OWN_JID=${OWN_JID}
+      - OPERATOR_BACKOFF_MINUTES=${OPERATOR_BACKOFF_MINUTES}
+      - PYTHONIOENCODING=utf-8
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    networks:
+      - twincore
+
+  # ==========================================================
+  # control-plane — approval gate + kill switch
+  # ==========================================================
+  control-plane:
+    build:
+      context: ./control-plane
+      dockerfile: Dockerfile
+    container_name: twincore-control-plane
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4500:4500"
+    volumes:
+      - ./control-plane-data:/app/data
+      - ./twincore-state:/var/twincore
+    environment:
+      - CONTROL_PLANE_PORT=${CONTROL_PLANE_PORT}
+      - CONTROL_PLANE_DB_PATH=/app/data/control.db
+      - WHATSAPP_BRIDGE_URL=${WHATSAPP_BRIDGE_URL}
+      - AUTO_REPLY_ENABLED=${AUTO_REPLY_ENABLED}
+      # Self-chat notification target (\u03b1.1)
+      - OWN_JID=${OWN_JID}
+      - PYTHONIOENCODING=utf-8
+      - LANG=en_US.UTF-8
+      - LC_ALL=en_US.UTF-8
+    networks:
+      - twincore
+
+networks:
+  twincore:
+    driver: bridge

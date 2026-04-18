@@ -292,15 +292,47 @@ Secrets live in `.env.local` (gitignored). Copy from `.env.example` at repo root
 
 ## 8. Current Focus
 
-> **Update this after every working session.**
+> **Update this after every working session.** Track status keys in the table below — each row moves through pending → in-progress → done. Append new rows as priorities surface.
 
-- **Current phase:** Phase 6 (Blocking Gaps) — **COMPLETE**
-- **Phase 6 acceptance criteria:** All met. 175/175 tests pass (24 Phase 6 integration + 7 Phase 6 invariant + prior phases). ruff + mypy clean. **Observability**: Prometheus-format metric registry (counter/gauge/histogram, Prometheus text exposition format, no external dep), structured JSON logger with required fields (ts/level/module/event), 3 Grafana dashboards (operations, memory_health, per_persona), 11 alert rules mapped to 11 runbooks. **Backup/DR**: backup.sh (existing from skeleton), restore.sh (decrypt + verify + swap with pre-restore copy), drill.sh (pull latest + decrypt + integrity_check + row count + report); **first DR drill passed** with elapsed 0s, well under 2h RTO (drills/2026-04-16.md). **Prompt versioning**: shadow harness (dispatch_with_shadow with rng injection for testing), daily comparison batch (output agreement, latency/cost deltas), promote/rollback functions; prompt_templates schema already present from Phase 2. Alert-has-runbook meta-test passes for all 11 alerts.
-- **Last worked on:** 2026-04-16. Implemented: migration 006 (retrieval_traces, prompt_shadow_logs, prompt_comparison_daily, backup_status), observability/metrics.py (thread-safe registry, Prometheus text format), observability/logging.py (JSONFormatter + StructuredLogger wrapper), policy/shadow.py (dispatch_with_shadow + compute_daily_comparison + promote_shadow + rollback_to_template), bin/restore.sh, bin/drill.sh, dashboards/{operations,memory_health,per_persona}.json + alerts.yaml, 11 runbooks in docs/runbooks/ for each alert. First DR drill ran end-to-end: backup → encrypt → store → pull → decrypt → integrity_check → report. Verdict PASS.
-- **Next session target:** Phase 7 — First Internal User. Seed persona, run against real WhatsApp MCP, capture eval baseline.
-- **Blocked by:** Nothing.
-- **Decisions since last update:** (1) No external Prometheus client dep — we implement minimal counter/gauge/histogram with thread-safe registry and text exposition format (~250 lines). (2) JSON logger uses Python stdlib logging with custom formatter; no structlog dep. (3) Shadow harness takes `rng` as an injectable callable for deterministic testing. (4) `compute_daily_comparison` uses `date(recorded_at) = ?` for day grouping — UTC assumed. (5) Promotion clears shadow flag + shadow_traffic_pct on the promoted template (can't be shadow and active simultaneously). (6) Drill script writes to `drills/YYYY-MM-DD.md` with verdict, timing, integrity, and row counts. (7) Runbooks are one-page, with sections: Severity / What it means / Immediate action / Diagnostic steps / Common causes / Remediation / Escalation / Related. (8) Alert → runbook mapping enforced by invariant test (test_every_alert_has_a_runbook). (9) Backup round-trip tested via subprocess calling actual bin/backup.sh and bin/restore.sh (installed `age` via brew for CI). (10) mcp_source_id column on events (Phase 0 schema) was already present without FK constraint — enforced in code only, since SQLite can't ALTER TABLE ADD CONSTRAINT additively.
-- **Notes:** Phase 6 test breakdown: 24 integration tests (7 metrics, 2 logging, 9 shadow harness, 3 schema presence, 3 backup/restore) + 7 invariant tests (2 alert coverage, 2 dashboard coverage, 3 prompt versioning invariants). First DR drill artifacts: drills/2026-04-16.md (PASS, 0s elapsed vs 60s target). T11 adversarial corpus + T3 release gates from Phase 5 remain green. 19 runbooks total (11 new + 8 existing from earlier phases). Deferred to Phase 7+: (a) Actually starting FastAPI /metrics endpoint and Prometheus scrape config — infrastructure concern, not adapter code. (b) Cron/systemd scheduling for backup/drill — deployment concern. (c) Real Grafana dashboard import — requires a running Grafana instance.
+- **Current phase:** Phase 7 (First Internal User) — **IN PROGRESS**. Phase 6 (Blocking Gaps) is COMPLETE (see Phase 6 notes at end).
+- **Deployment branch:** `phase-6.5-http-surface` (memory_engine + `twincore-alpha/` subdirectory). Both published to `randunun-eng/memory_engine` (public).
+- **Live deployment:** 4 containers on Mac mini (memory-engine, whatsapp-bridge, twin-agent, control-plane). Real WhatsApp account (+94…6857). 2 contacts classified (spouse, family). Self-chat approval loop validated end-to-end. Drafts landing in natural operator voice.
+
+### Phase 7 status keys
+
+| Key | State | Notes |
+|---|---|---|
+| Real persona seeded | DONE | `randunu_primary` signed YAML live |
+| Real WhatsApp MCP running | DONE | whatsmeow pinned to `3ff20cd` (Apr 2026) for current waVersion |
+| Persistent runtime | DONE | Docker restart policies + `phase-6.5-http-surface` branch pin |
+| α.1 self-chat commands | DONE | /approve /reject /edit /help + 10-min OPERATOR_BACKOFF_MINUTES |
+| α.2 contact profiles | DONE | 6 relationship categories, profile-aware prompt injection |
+| Identity-leak fix | DONE | First-person framing; validated on draft #13 ("Hey Babi.") |
+| **P0 #1: scheduled encrypted backups** | **DONE** | `bin/backup-twincore.sh` + `bin/restore-twincore.sh`, age-encrypted (key at `~/.config/twincore/age-key.txt`). launchd `ai.twincore.backup` runs every 6h, RunAtLoad. Offsite dest: Google Drive (`~/Library/CloudStorage/GoogleDrive-randunun@gmail.com/My Drive/TwincoreBackups/`). Restore verified: manifest match + 4/4 SQLite PRAGMA integrity_check PASS. Known cosmetic: launchd TCC blocks stat-after-write on Drive path, so logged size shows 0 KB while actual file is ~4 MB (proven valid). Retention prune also can't delete from Drive via launchd; occasional manual cleanup required. |
+| **P0 #2: Gemini rate-limit guard** | **DONE** | Sliding 60s window limiter in `twin-agent/main.py` (`GeminiRateLimiter`). Caps at `GEMINI_MAX_RPM=14` (one slot below the 15 RPM free-tier), warns at `GEMINI_WARN_RPM=12`, sleeps until oldest slot ages out rather than letting 429 fire. 429 path parses `Retry-After` and applies a 1–60s server cooldown floor. Deployed 2026-04-18, twin-agent restart clean. |
+| **P0 #3: whatsmeow drift monitor** | **DONE** | `bin/check-whatsmeow-drift.sh` parses pinned SHA from `whatsapp-bridge/Dockerfile`, queries GitHub `compare/pinned...HEAD`, emits a self-chat alert via bridge `/api/send` when `ahead_by ≥ DRIFT_ALERT_THRESHOLD` (default 1). launchd `ai.twincore.whatsmeow-drift` runs weekly (`StartInterval=604800`), RunAtLoad. Logs to `~/Library/Logs/twincore/whatsmeow-drift.log`. Verified 2026-04-18 end-to-end: real pin → 0 commits drift (no alert); synthetic old pin `HEAD~50` → 50 commits drift detected, alert message constructed, JSON event emitted. |
+| P1 #4: eval baseline | PENDING | 100 queries + expected top-k + MRR@10 ≥ 0.6, P@5 ≥ 0.7. Design choices (Q1/Q2/Q3) still open. |
+| P1 #5: first quarantine review | PENDING | Phase 7 acceptance gate. |
+| P1 #6: merge `phase-6.5-http-surface` to `main` | PENDING | 5+ commits ahead of main. |
+| α.3: encoding-weight + heavy-bit | PENDING (Phase 8 or post-baseline α.3) | Gemini-consultation outputs; do NOT land before eval baseline captures against the current ranker. |
+| Synapse conflict handling spec | CAPTURED in DRIFT (`61cab5b`) | Phase 8+. Implementation deferred. |
+
+### Recent decisions (Phase 7)
+
+1. **twincore-alpha schema rich-form vs Phase 4 canonical form** — operator YAMLs use extended schema (role/values/tone/structured non-negotiables); Phase 4's `parse_identity_yaml` expects simpler form. Bootstrap skips `/v1/identity/load`; twin-agent reads YAML from disk directly. DRIFT `identity-schema-mismatch-twincore-vs-phase4` captures the Phase 7 canonical-schema work.
+2. **Message IDs are TEXT not INTEGER** — propagated across twin-agent + control-plane. DRIFT entry.
+3. **SQLite timestamp separator must be space (not T)** to match bridge storage — DRIFT entry.
+4. **Broadcast/group messages skipped at twin-agent level** — alpha scope is conversational messages only.
+5. **Backup offsite via Google Drive, NOT GitHub** — private repo would work but git stores binary blobs inefficiently; Drive handles versioned files natively and the Mac-mini mount is already configured.
+6. **age keypair for backups** — generated at `~/.config/twincore/age-key.txt` (chmod 600). Public key: `age1vnc5a0gw4get3xs8vmcwfvkmmuemf78k2qpghnncwnun3rpq6css3u3w3y`. **Private key must be physically backed up** (password manager, printed, safe) — losing it makes all encrypted backups unrecoverable.
+
+### Blockers
+
+None for P0. P1 #4 eval baseline needs design answers on Q1 (query source: real/synthetic/seed), Q2 (ground truth: operator/LLM), Q3 (corpus: live/frozen). My recommendation stands: seed corpus + LLM-labeled + frozen snapshot.
+
+### Phase 6 notes (retained for reference)
+
+Phase 6 acceptance criteria all met. 175/175 tests pass (24 Phase 6 integration + 7 Phase 6 invariant + prior phases). Observability: Prometheus-format metric registry, structured JSON logger, 3 Grafana dashboards, 11 alert→runbook mappings. Backup/DR: bin/backup.sh + bin/restore.sh + bin/drill.sh. First DR drill PASS 2026-04-16 (0s elapsed vs 2h RTO). Prompt versioning: shadow harness + comparison batch + promote/rollback. 19 runbooks total. Deferred to Phase 7+: FastAPI /metrics endpoint, real Grafana import, cron scheduling of the memory_engine-side backup (now supplanted by the twincore-alpha deployment-side backup documented above).
 
 ---
 

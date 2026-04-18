@@ -1,0 +1,20 @@
+.env
+*.key
+*.pem
+data/
+whatsapp-data/
+whatsapp-auth/
+memory-engine-data/
+control-plane-data/
+twincore-state/
+__pycache__/
+*.pyc
+.DS_Store
+auth_info/
+logs/
+*.log
+drills/
+
+# Operator-specific signed identity YAMLs. Keep example.yaml as a template.
+personas/*.yaml
+!personas/example.yaml
