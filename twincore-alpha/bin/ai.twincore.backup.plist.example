@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd agent template for scheduled twincore backups on macOS.
+
+  To install:
+    1. Copy this file to ~/Library/LaunchAgents/ai.twincore.backup.plist
+    2. Replace YOUR_USER with your actual macOS username (or substitute $HOME).
+    3. Ensure ~/.config/twincore/age-key.txt exists
+       (age-keygen -o ~/.config/twincore/age-key.txt && chmod 600 $_)
+    4. mkdir -p ~/Library/Logs/twincore
+    5. launchctl load -w ~/Library/LaunchAgents/ai.twincore.backup.plist
+
+  RunAtLoad fires the first backup immediately so you can verify end-to-end
+  before trusting the 6-hour schedule.
+
+  To uninstall: launchctl unload ~/Library/LaunchAgents/ai.twincore.backup.plist
+
+  For Linux deployments, use cron or systemd instead:
+    # cron example (every 6 hours):
+    0 */6 * * * /path/to/twincore-alpha/bin/backup-twincore.sh >> ~/.local/log/twincore-backup.log 2>&1
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.twincore.backup</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>/Users/YOUR_USER/path/to/twincore-alpha/bin/backup-twincore.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>21600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/twincore/backup.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/twincore/backup.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
