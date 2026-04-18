@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd agent template for weekly whatsmeow drift monitor (P0 #3).
+
+  whatsmeow's waVersion string goes stale roughly monthly; when it does,
+  WhatsApp rejects the websocket handshake with HTTP 405 and the bridge
+  goes silent. This monitor catches drift before the floor rotates, not
+  after — it asks GitHub how many commits tulir/whatsmeow has moved past
+  our pin, and self-chats the operator if any.
+
+  To install:
+    1. Copy this file to ~/Library/LaunchAgents/ai.twincore.whatsmeow-drift.plist
+    2. Replace YOUR_USER with your actual macOS username.
+    3. mkdir -p ~/Library/Logs/twincore
+    4. launchctl load -w ~/Library/LaunchAgents/ai.twincore.whatsmeow-drift.plist
+
+  Optional env (in <EnvironmentVariables> below):
+    GITHUB_TOKEN           PAT to lift the 60 req/hr anon rate limit
+    DRIFT_ALERT_THRESHOLD  commits ahead before alerting (default 1)
+    BRIDGE_URL             whatsapp-bridge HTTP (default 127.0.0.1:8080)
+    OWN_JID_SEND           self-chat target (auto-read from .env if unset)
+
+  For Linux deployments, use cron:
+    0 9 * * 1 /path/to/twincore-alpha/bin/check-whatsmeow-drift.sh \
+              >> ~/.local/log/twincore-whatsmeow-drift.log 2>&1
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.twincore.whatsmeow-drift</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>/Users/YOUR_USER/path/to/twincore-alpha/bin/check-whatsmeow-drift.sh</string>
+    </array>
+
+    <!-- Weekly: 7 * 24 * 3600 = 604800 seconds. -->
+    <key>StartInterval</key>
+    <integer>604800</integer>
+
+    <!-- Fire once on load so a fresh install gets a known-good baseline log. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/twincore/whatsmeow-drift.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/twincore/whatsmeow-drift.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>
