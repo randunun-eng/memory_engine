@@ -270,6 +270,49 @@ async def _promote_candidate(
                 counterparty_id = event.counterparty_id
                 break
 
+    # Exact-content dedup: if an active neuron with the same content_hash
+    # already exists for this (persona, kind, counterparty), reinforce it
+    # instead of inserting a duplicate. The extractor is non-deterministic
+    # and tick-driven re-processing (events re-surfacing after working_memory
+    # decay) produces identical-text neurons that poison BM25's IDF — once
+    # "harsha" is in 10/24 neurons, its IDF collapses to 0 and retrieval
+    # returns nothing. See DRIFT `consolidator-duplicate-extraction-loop`.
+    existing_cursor = await conn.execute(
+        """
+        SELECT id, source_event_ids, source_count, distinct_source_count
+        FROM neurons
+        WHERE persona_id = ? AND kind = ? AND content_hash = ?
+          AND superseded_at IS NULL
+          AND (counterparty_id IS ? OR counterparty_id = ?)
+        LIMIT 1
+        """,
+        (persona_id, candidate.kind, content_hash, counterparty_id, counterparty_id),
+    )
+    existing_row = await existing_cursor.fetchone()
+    if existing_row is not None:
+        existing_ids = set(json.loads(existing_row["source_event_ids"]))
+        new_ids = set(candidate.source_event_ids)
+        truly_new = new_ids - existing_ids
+        merged_ids = sorted(existing_ids | new_ids)
+        new_source_count = existing_row["source_count"] + len(new_ids)
+        new_distinct = existing_row["distinct_source_count"] + len(truly_new)
+        await conn.execute(
+            """
+            UPDATE neurons
+            SET source_count = ?,
+                distinct_source_count = ?,
+                source_event_ids = ?
+            WHERE id = ?
+            """,
+            (new_source_count, new_distinct, json.dumps(merged_ids), existing_row["id"]),
+        )
+        await conn.commit()
+        logger.info(
+            "dedup: reinforced existing neuron %d (distinct=%d) instead of inserting duplicate",
+            existing_row["id"], new_distinct,
+        )
+        return int(existing_row["id"])
+
     # Check for contradictions with existing neurons
     if dispatch is not None:
         overlapping = await find_overlapping_neurons(
