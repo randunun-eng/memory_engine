@@ -87,13 +87,23 @@ async def grounding_gate(
                 detail=f"event_id={eid} not found for persona={persona_id}",
             )
 
-    # Step 2: Similarity check — candidate content vs cited event text
+    # Step 2: Similarity check — candidate content vs BEST-matching single
+    # source event. The extractor commonly over-cites (lists the full batch
+    # as sources for a single-sentence claim), so scoring against the
+    # concatenation of every cited event washes the signal out and rejects
+    # valid extractions. See DRIFT `grounding-concat-over-citation`.
     if embed_fn is not None and events:
-        source_text = _concatenate_event_text(events)
         try:
             candidate_vec = embed_fn(candidate.content)
-            source_vec = embed_fn(source_text)
-            sim = _cosine_similarity(candidate_vec, source_vec)
+            sim = 0.0
+            for ev in events:
+                ev_text = _event_text(ev)
+                if not ev_text:
+                    continue
+                ev_vec = embed_fn(ev_text)
+                ev_sim = _cosine_similarity(candidate_vec, ev_vec)
+                if ev_sim > sim:
+                    sim = ev_sim
         except Exception:
             logger.warning("Embedding failed during grounding", exc_info=True)
             sim = 0.0
@@ -102,7 +112,7 @@ async def grounding_gate(
             return GroundingResult(
                 verdict=Verdict.REJECT,
                 reason="low_similarity",
-                detail=f"cosine_sim={sim:.3f} < threshold={similarity_threshold}",
+                detail=f"max_cosine_sim={sim:.3f} < threshold={similarity_threshold}",
             )
 
     # Step 3: LLM judge for high-confidence tier promotion
@@ -179,16 +189,19 @@ async def _event_exists(conn: aiosqlite.Connection, event_id: int, persona_id: i
     return await cursor.fetchone() is not None
 
 
+def _event_text(event: Event) -> str:
+    """Extract the best text field from a single event's payload."""
+    payload = event.payload
+    text = payload.get("text", payload.get("body", payload.get("content", "")))
+    if not text and isinstance(payload, dict):
+        text = json.dumps(payload)
+    return str(text)
+
+
 def _concatenate_event_text(events: list[Event]) -> str:
-    """Build source text from events for similarity comparison."""
-    parts = []
-    for event in events:
-        payload = event.payload
-        text = payload.get("text", payload.get("body", payload.get("content", "")))
-        if not text and isinstance(payload, dict):
-            text = json.dumps(payload)
-        parts.append(str(text))
-    return " ".join(parts)
+    """Build source text by joining events. Kept for the LLM-judge path,
+    which still sends the full cited context as a block."""
+    return " ".join(_event_text(e) for e in events)
 
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
