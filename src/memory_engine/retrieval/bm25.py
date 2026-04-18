@@ -10,7 +10,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-from rank_bm25 import BM25Okapi
+from rank_bm25 import BM25Plus
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -33,7 +33,7 @@ class BM25Index:
 
     def __init__(self) -> None:
         self._neuron_ids: list[int] = []
-        self._index: BM25Okapi | None = None
+        self._index: BM25Plus | None = None
 
     @property
     def size(self) -> int:
@@ -68,7 +68,7 @@ class BM25Index:
         corpus = [tokenize(row["content"]) for row in rows]
 
         if corpus:
-            self._index = BM25Okapi(corpus)
+            self._index = BM25Plus(corpus)
         else:
             self._index = None
 
@@ -82,7 +82,7 @@ class BM25Index:
             return []
 
         scores = self._index.get_scores(tokens)
-        # Pair with neuron IDs, keep any non-zero score. BM25Okapi produces
+        # Pair with neuron IDs, keep any non-zero score. BM25Plus produces
         # negative IDF (and therefore negative scores) when the corpus has
         # fewer than ~3 documents — those negatives still indicate token
         # overlap and must be kept.  Non-matching docs always score exactly 0.
