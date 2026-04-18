@@ -40,3 +40,4 @@ logs/
 
 # uv
 .python-version.lock
+.claude/
