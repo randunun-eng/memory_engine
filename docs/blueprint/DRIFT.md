@@ -81,6 +81,49 @@ The pin lives in dispatch.py as a default parameter and in config.py as the broa
 
 **Re-measurement:** Phase 6 operational hardening adds the `--perf` flag test with a real 10k-event fixture. The number here is the Phase 3 baseline.
 
+### 2026-04-18: Synapse conflict handling missing (cortex/synapses)
+
+**Gap.** Neurons carry supersession (`superseded_at`/`superseded_by`) and bi-temporal validity (`t_valid_start`/`t_valid_end`). Synapses carry neither. They are derived from co-occurrence of neurons in events and rebuildable from scratch — which is fine while synapses are a secondary retrieval signal, but becomes a silent-forgetting hazard the moment we promote them to first-class (Phase 7+ direction).
+
+**Why this surfaced now.** Exploring Buddhist models of memory (Yoniso Manasikara / Paticca-samuppada) with an external LLM raised the point that a twin with strong causal reasoning needs synapses to outrank isolated neurons at retrieval. Under that shift, a causal edge like `mood_dip → CNC_misalignment` that turns out false must not simply vanish when the next extraction fires — the twin would lose the ability to say "I used to think X, but lately I've noticed Y." A brain that silently forgets it was wrong is worse than a library that keeps outdated facts.
+
+**Three options considered, with the chosen design:**
+
+1. **Per-synapse supersession chain.** Mirrors the neuron model exactly. Rejected: too rigid for a relational signal. Every retrieval read would need `WHERE superseded_at IS NULL` filters on the graph layer. Treats wisdom like accounting.
+
+2. **Weighted synapse with decay + Bayesian-ish update.** Each synapse carries `weight ∈ [0,1]` and `last_seen_at`. Corroborating evidence nudges weight up; absence of evidence decays it (the Anicca path). Retrieval uses weight directly; low-weight edges fall off without being deleted. This is the **body** of the solution — handles ~90% of normal learning.
+
+3. **Contradiction event → quarantine → LLM judge.** When a new extraction produces a synapse that semantically opposes an existing **heavy** synapse (both above a confidence threshold), do **not** auto-merge. Emit a `synapse_contradiction` event. An LLM judge (the Sampajanna layer — first reviewer) decides retire / reject / coexist. If the judge is uncertain, escalate to the operator via self-chat `/contradict` command. This is the **brain** of the solution — bounded human cost, conscious handling of high-stakes flips.
+
+**Chosen:** hybrid (2) + (3). Default path is weight update + soft decay (cheap, always-on). Escalation path is the contradiction event (rare, reviewed). The intensity insight from the Javana discussion lands here too: a single very-high-confidence contradiction should be allowed to trigger (3) immediately, not wait for repeated nudges under (2). Implement via a `Recency × Intensity` multiplier on the weight update: `delta = base_delta * intensity * recency_factor`, and fire (3) when `|delta|` exceeds threshold.
+
+**Schema plan (Phase 7, speculative — do not implement in Phase 6.5):**
+
+```sql
+ALTER TABLE synapses ADD COLUMN weight        REAL NOT NULL DEFAULT 0.5;
+ALTER TABLE synapses ADD COLUMN last_seen_at  TEXT NOT NULL DEFAULT (datetime('now'));
+ALTER TABLE synapses ADD COLUMN kind          TEXT NOT NULL DEFAULT 'cooccurrence'
+  CHECK (kind IN ('cooccurrence','causal','temporal'));
+
+CREATE TABLE synapse_contradictions (
+  id                 INTEGER PRIMARY KEY,
+  persona_id         INTEGER NOT NULL REFERENCES personas(id),
+  incumbent_synapse  INTEGER NOT NULL REFERENCES synapses(id),
+  challenger_payload TEXT    NOT NULL,  -- JSON: proposed synapse + source event ids
+  detected_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+  reviewed_at        TEXT,
+  review_verdict     TEXT             -- 'retire_incumbent' | 'reject_challenger' | 'coexist'
+);
+```
+
+**Decay at read time, not via batch.** `effective_weight = weight * exp(-lambda * days_since_last_seen)`. Single tunable `lambda`. Avoids a periodic sweep process.
+
+**Governance implications.** Rule 8 ("every neuron mutation emits an event") must extend to synapses once we start mutating them. Each weight update emits a `synapse_reinforced` or `synapse_decayed` event; each quarantine decision emits a `synapse_retired` or `synapse_upheld`. This keeps rule 1 (event log is source of truth) honest as synapses gain mutable state.
+
+**Operator load budget.** Self-chat command surface handles ~1 review at a time. Contradiction threshold must be set conservatively — LLM judge absorbs most cases, operator only sees the genuinely ambiguous ones. Measurement target for Phase 7: operator escalations ≤ 1 per week at steady state. If we exceed that, tighten the judge confidence threshold or widen the coexist verdict.
+
+**Status:** Open. To spec formally when Phase 6.5 HTTP surface lands and we plan Phase 7.
+
 ## Resolved entries
 
 ### 2026-04-16: Immutability trigger mechanism (migration 001)
