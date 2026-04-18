@@ -171,7 +171,15 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
     private_key = _decode_env_key("MEMORY_ENGINE_CONSOLIDATOR_PRIVATE_KEY_B64")
     public_key_b64 = os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_PUBLIC_KEY_B64")
     interval_s = float(os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_INTERVAL_S", "60"))
-    model = os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_MODEL", "gemma-4-31b-it")
+    # Default is gemini-2.5-flash, not a Gemma reasoning model. Gemma-4-31b-it
+    # was tried first (separate quota pool from twin-agent) but live testing
+    # showed extraction calls exceeding AI Studio's upstream timeout (HTTP 499)
+    # because reasoning models emit multi-second <thought> blocks before the
+    # JSON payload, and the 16-event batched prompt pushes the total response
+    # over the edge. gemini-2.5-flash returns clean JSON in under a second at
+    # the cost of sharing twin-agent's 15 RPM free-tier pool — the combined
+    # cap is 9+6=15, fitting exactly. Raise cap if you upgrade tier.
+    model = os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_MODEL", "gemini-2.5-flash")
     max_rpm = int(os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_MAX_RPM", "6"))
     warn_rpm = int(os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_WARN_RPM", "4"))
 
