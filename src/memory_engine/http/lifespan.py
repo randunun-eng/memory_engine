@@ -125,6 +125,7 @@ async def _consolidation_loop(
     private_key: bytes,
     public_key_b64: str,
     interval_s: float,
+    similarity_threshold: float,
 ) -> None:
     logger.info("consolidator loop started: interval=%.1fs", interval_s)
     while True:
@@ -141,6 +142,7 @@ async def _consolidation_loop(
                         private_key,
                         public_key_b64,
                         embed_fn=embed_fn,
+                        similarity_threshold=similarity_threshold,
                     )
                     await _update_lag_gauge(conn, persona_id)
                     logger.info(
@@ -182,6 +184,16 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
     model = os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_MODEL", "gemini-2.5-flash")
     max_rpm = int(os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_MAX_RPM", "6"))
     warn_rpm = int(os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_WARN_RPM", "4"))
+    # Grounding threshold default is 0.25 here, below Phase 2's 0.40 baseline.
+    # Reason: the gate computes similarity against the CONCATENATION of every
+    # cited event, and the extractor over-cites (lists the full 16-event batch
+    # as sources for a single-sentence claim). The concat washes the signal
+    # out, so real-world single-fact paraphrases score ~0.10-0.25 even when
+    # the grounding is perfect. Proper fix (per-event max similarity) deferred
+    # to Phase 7 post-MVP — see DRIFT `grounding-concat-over-citation`.
+    similarity_threshold = float(
+        os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_SIMILARITY_THRESHOLD", "0.25")
+    )
 
     task: asyncio.Task[None] | None = None
     backend: GoogleAIStudioBackend | None = None
@@ -212,6 +224,7 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
         task = asyncio.create_task(
             _consolidation_loop(
                 dispatch, embed_fn, private_key, public_key_b64, interval_s,
+                similarity_threshold,
             ),
             name="consolidator-loop",
         )
