@@ -62,6 +62,7 @@ async def consolidation_pass(
     decay_half_life_minutes: int = 30,
     activation_threshold: float = 0.1,
     working_memory_capacity: int = 64,
+    max_events_per_pass: int | None = 16,
 ) -> ConsolidationStats:
     """Run one full consolidation pass for a persona.
 
@@ -86,8 +87,12 @@ async def consolidation_pass(
     """
     stats = ConsolidationStats()
 
-    # 1. Promote — ingest new events into working memory + extract candidates
-    new_events = await _find_unconsolidated_events(conn, persona_id)
+    # 1. Promote — ingest new events into working memory + extract candidates.
+    # `max_events_per_pass` caps the prompt size / LLM latency per tick; the
+    # next tick picks up the remainder. None means "no cap".
+    new_events = await _find_unconsolidated_events(
+        conn, persona_id, limit=max_events_per_pass,
+    )
     for event in new_events:
         await _enter_working_memory(conn, persona_id, event.id)
         stats.events_entered += 1
@@ -177,14 +182,18 @@ class ConsolidationStats:
 async def _find_unconsolidated_events(
     conn: aiosqlite.Connection,
     persona_id: int,
+    *,
+    limit: int | None = None,
 ) -> list[Event]:
     """Find events not yet entered into working memory.
 
     Only processes message_in and message_out events — retrieval_trace and
     operator_action events don't produce neurons.
+
+    `limit` caps the batch size so a single extraction call doesn't see
+    an unbounded event list (keeps prompt size and LLM latency predictable).
     """
-    cursor = await conn.execute(
-        """
+    sql = """
         SELECT e.id, e.persona_id, e.counterparty_id, e.type, e.scope,
                e.content_hash, e.idempotency_key, e.payload, e.signature,
                e.recorded_at
@@ -194,9 +203,12 @@ async def _find_unconsolidated_events(
           AND e.type IN ('message_in', 'message_out')
           AND wm.id IS NULL
         ORDER BY e.recorded_at ASC
-        """,
-        (persona_id,),
-    )
+    """
+    params: tuple[Any, ...] = (persona_id,)
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = (persona_id, limit)
+    cursor = await conn.execute(sql, params)
     rows = await cursor.fetchall()
     return [
         Event(

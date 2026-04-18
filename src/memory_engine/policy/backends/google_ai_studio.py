@@ -91,7 +91,7 @@ class GoogleAIStudioBackend:
         base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai",
         max_rpm: int = 6,
         warn_rpm: int = 4,
-        timeout_s: float = 45.0,
+        timeout_s: float = 120.0,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
