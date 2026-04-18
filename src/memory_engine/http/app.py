@@ -12,6 +12,7 @@ from memory_engine.exceptions import (
     IdempotencyConflict,
     SignatureInvalid,
 )
+from memory_engine.http.lifespan import consolidator_lifespan
 from memory_engine.http.routes.identity import router as identity_router
 from memory_engine.http.routes.ingest import router as ingest_router
 from memory_engine.http.routes.mcp import router as mcp_router
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
         title="memory_engine",
         version="0.1.0",
         docs_url="/docs",
+        lifespan=consolidator_lifespan,
     )
     app.include_router(recall_router, prefix="/v1")
     app.include_router(personas_router, prefix="/v1")
