@@ -103,31 +103,54 @@ class GoogleAIStudioBackend:
         if "/" in model:
             model = model.split("/", 1)[1]
 
-        await self._limiter.acquire()
-        r = await self._client.post(
-            f"{self._base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json; charset=utf-8",
-            },
-            json={
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": temperature,
-                "response_format": {"type": "json_object"},
-            },
-        )
-        if r.status_code == 429:
-            retry_after_raw = r.headers.get("retry-after")
-            retry_after: float | None = None
-            if retry_after_raw:
-                try:
-                    retry_after = float(retry_after_raw)
-                except ValueError:
-                    retry_after = None
-            self._limiter.notify_429(retry_after)
-            raise RuntimeError(f"ai_studio 429 rate-limited body={r.text[:200]!r}")
-        r.raise_for_status()
+        # Single retry on 5xx — AI Studio returns transient 503s under load.
+        # 429s are NOT retried here; they flow through the rate limiter.
+        last_exc: Exception | None = None
+        for attempt in range(2):
+            await self._limiter.acquire()
+            try:
+                r = await self._client.post(
+                    f"{self._base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json; charset=utf-8",
+                    },
+                    json={
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": temperature,
+                        "response_format": {"type": "json_object"},
+                    },
+                )
+            except httpx.RequestError as e:
+                last_exc = e
+                if attempt == 0:
+                    logger.warning("ai_studio network error %r, retrying once", e)
+                    await asyncio.sleep(2.0)
+                    continue
+                raise
+            if r.status_code == 429:
+                retry_after_raw = r.headers.get("retry-after")
+                retry_after: float | None = None
+                if retry_after_raw:
+                    try:
+                        retry_after = float(retry_after_raw)
+                    except ValueError:
+                        retry_after = None
+                self._limiter.notify_429(retry_after)
+                raise RuntimeError(f"ai_studio 429 rate-limited body={r.text[:200]!r}")
+            if 500 <= r.status_code < 600 and attempt == 0:
+                logger.warning(
+                    "ai_studio %d transient, retrying once: %s",
+                    r.status_code, r.text[:200],
+                )
+                await asyncio.sleep(2.0)
+                continue
+            r.raise_for_status()
+            break
+        else:
+            if last_exc is not None:
+                raise last_exc
         data = r.json()
         choices = data.get("choices") or []
         if not choices:

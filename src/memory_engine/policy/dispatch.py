@@ -150,16 +150,43 @@ def _parse_response(
                 f"Custom parser failed for site={site!r}: {e}"
             ) from e
 
-    # Default: strip markdown fences and parse JSON
+    # Default: tolerate reasoning-model noise, then parse JSON.
+    # Gemma-4 (and other thinking-enabled models) prefix responses with
+    # <thought>...</thought> blocks even when response_format=json_object is
+    # requested. Strip those first, then markdown fences, then slice to the
+    # outermost JSON object if there's leading/trailing prose.
     text = raw.strip()
+
+    # 1. Strip <thought>, <thinking>, <think> reasoning blocks (Gemma, Qwen, DeepSeek).
+    for tag in ("thought", "thinking", "think"):
+        pattern = f"<{tag}>"
+        close = f"</{tag}>"
+        lower = text.lower()
+        while pattern in lower:
+            start = lower.find(pattern)
+            end = lower.find(close, start)
+            if end == -1:
+                # Unclosed tag — drop everything from the open tag onward.
+                text = text[:start].strip()
+                break
+            text = (text[:start] + text[end + len(close):]).strip()
+            lower = text.lower()
+
+    # 2. Strip markdown fences.
     if text.startswith("```"):
         lines = text.split("\n")
-        # Remove first and last fence lines
         if lines[0].startswith("```"):
             lines = lines[1:]
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
-        text = "\n".join(lines)
+        text = "\n".join(lines).strip()
+
+    # 3. If there's still leading/trailing prose, slice to outermost { ... }.
+    if text and not text.startswith("{"):
+        first = text.find("{")
+        last = text.rfind("}")
+        if first != -1 and last > first:
+            text = text[first : last + 1]
 
     try:
         parsed: dict[str, Any] = json.loads(text)
