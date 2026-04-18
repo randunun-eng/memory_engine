@@ -27,7 +27,17 @@ def parse_lens(lens: str, persona_id: int) -> LensFilter:
       - 'self'               -> self_facts only
       - 'counterparty:<ref>' -> counterparty_facts for <ref> + domain_facts
       - 'domain'             -> domain_facts only
-      - 'auto'               -> defaults to 'self' in Phase 1
+      - 'auto'               -> everything the persona can see (all kinds,
+                                all counterparties). Rule 12 still holds:
+                                results never leave the persona.
+
+    Phase 1 pinned 'auto' to 'self' as a stub; Phase 7 operator use
+    requires the twin-agent to recall across any contact without having
+    to pass an explicit counterparty — otherwise counterparty_fact-heavy
+    deployments see empty results. Cross-counterparty LEAKAGE is still
+    structurally prevented by Rule 12 at the admin-path level (the
+    `admin_cross_counterparty_recall` function is the only cross-persona
+    surface); this lens stays inside a single persona.
 
     The returned WHERE clause is AND-appended to whatever outer query runs.
     Always scoped to persona_id.
@@ -36,7 +46,10 @@ def parse_lens(lens: str, persona_id: int) -> LensFilter:
         ValueError: Unknown lens format.
     """
     if lens == "auto":
-        return parse_lens("self", persona_id)
+        return LensFilter(
+            where_clause="(n.persona_id = ?)",
+            params=(persona_id,),
+        )
 
     if lens == "self":
         return LensFilter(

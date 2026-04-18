@@ -218,6 +218,9 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
         embedder = await _get_embedder()
         embed_fn = _build_embed_fn(embedder)
+        # Share with HTTP routes (recall embeds queries with the same model).
+        app.state.embed_fn = embed_fn
+        app.state.embedder_rev = "sbert-minilm-l6-v2-1"
 
         task = asyncio.create_task(
             _consolidation_loop(

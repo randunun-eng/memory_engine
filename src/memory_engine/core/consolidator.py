@@ -95,6 +95,7 @@ async def consolidation_pass(
     )
     for event in new_events:
         await _enter_working_memory(conn, persona_id, event.id)
+        await _mark_consolidated(conn, persona_id, event.id)
         stats.events_entered += 1
 
     if new_events:
@@ -129,6 +130,7 @@ async def consolidation_pass(
                     conn, candidate, persona_id, embedder_rev,
                     private_key, public_key_b64,
                     dispatch=dispatch,
+                    embed_fn=embed_fn,
                 )
                 if neuron_id is not None:
                     stats.neurons_promoted += 1
@@ -185,10 +187,13 @@ async def _find_unconsolidated_events(
     *,
     limit: int | None = None,
 ) -> list[Event]:
-    """Find events not yet entered into working memory.
+    """Find events not yet consolidated for this persona.
 
     Only processes message_in and message_out events — retrieval_trace and
-    operator_action events don't produce neurons.
+    operator_action events don't produce neurons. Uses `consolidation_log`
+    (migration 007) rather than `working_memory`: the ring buffer decays by
+    activation, so events could re-enter extraction once WM pruned them.
+    `consolidation_log` is the durable "has been through extraction" record.
 
     `limit` caps the batch size so a single extraction call doesn't see
     an unbounded event list (keeps prompt size and LLM latency predictable).
@@ -198,10 +203,11 @@ async def _find_unconsolidated_events(
                e.content_hash, e.idempotency_key, e.payload, e.signature,
                e.recorded_at
         FROM events e
-        LEFT JOIN working_memory wm ON wm.event_id = e.id AND wm.persona_id = e.persona_id
+        LEFT JOIN consolidation_log cl
+          ON cl.event_id = e.id AND cl.persona_id = e.persona_id
         WHERE e.persona_id = ?
           AND e.type IN ('message_in', 'message_out')
-          AND wm.id IS NULL
+          AND cl.id IS NULL
         ORDER BY e.recorded_at ASC
     """
     params: tuple[Any, ...] = (persona_id,)
@@ -241,6 +247,25 @@ async def _enter_working_memory(
     await conn.commit()
 
 
+async def _mark_consolidated(
+    conn: aiosqlite.Connection,
+    persona_id: int,
+    event_id: int,
+) -> None:
+    """Mark an event as having been through consolidation.
+
+    Durable record that outlives working_memory decay. Prevents the
+    re-extraction loop where events re-surface for extraction once the
+    ring buffer prunes them by activation. See migration 007 / DRIFT
+    `consolidator-duplicate-extraction-loop`.
+    """
+    await conn.execute(
+        "INSERT OR IGNORE INTO consolidation_log (persona_id, event_id) VALUES (?, ?)",
+        (persona_id, event_id),
+    )
+    await conn.commit()
+
+
 async def _promote_candidate(
     conn: aiosqlite.Connection,
     candidate: NeuronCandidate,
@@ -250,6 +275,7 @@ async def _promote_candidate(
     public_key_b64: str,
     *,
     dispatch: PolicyDispatch | None = None,
+    embed_fn: Any | None = None,
 ) -> int | None:
     """Promote a grounded candidate to the neurons table.
 
@@ -363,6 +389,20 @@ async def _promote_candidate(
     await conn.commit()
     neuron_id = cursor.lastrowid
     assert neuron_id is not None
+
+    # Embed into neurons_vec so vector retrieval can reach this neuron.
+    # Best-effort: if sqlite-vec isn't available or embedding fails, the
+    # BM25 stream still retrieves the neuron — we just lose the vector signal.
+    if embed_fn is not None:
+        try:
+            vec = embed_fn(candidate.content)
+            await conn.execute(
+                "INSERT OR REPLACE INTO neurons_vec (neuron_id, embedding) VALUES (?, ?)",
+                (neuron_id, json.dumps(list(vec))),
+            )
+            await conn.commit()
+        except Exception:
+            logger.warning("neurons_vec insert failed for neuron %d", neuron_id, exc_info=True)
 
     # Now handle supersession for contradictions
     if dispatch is not None:

@@ -6,7 +6,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from memory_engine.db.connection import connect
@@ -31,7 +31,7 @@ class RecallResponse(BaseModel):
 
 
 @router.post("/recall", response_model=RecallResponse)
-async def recall_endpoint(req: RecallRequest) -> RecallResponse:
+async def recall_endpoint(req: RecallRequest, request: Request) -> RecallResponse:
     """Retrieve relevant neurons for a query under a lens."""
     start = time.monotonic()
 
@@ -48,6 +48,20 @@ async def recall_endpoint(req: RecallRequest) -> RecallResponse:
 
         as_of = req.as_of.replace(tzinfo=UTC) if req.as_of and req.as_of.tzinfo is None else req.as_of
 
+        # Embed the query with the shared MiniLM singleton (from lifespan).
+        # If the embedder isn't loaded (e.g. consolidator env vars missing),
+        # recall falls back to BM25 ⊕ graph only.
+        query_embedding: list[float] | None = None
+        embedder_rev: str | None = None
+        embed_fn = getattr(request.app.state, "embed_fn", None)
+        if embed_fn is not None:
+            try:
+                vec = embed_fn(req.query)
+                query_embedding = list(vec)
+                embedder_rev = getattr(request.app.state, "embedder_rev", "sbert-minilm-l6-v2-1")
+            except Exception:
+                query_embedding = None
+
         results = await recall(
             conn,
             persona_id=persona_id,
@@ -56,6 +70,8 @@ async def recall_endpoint(req: RecallRequest) -> RecallResponse:
             as_of=as_of,
             top_k=req.top_k,
             token_budget=req.token_budget,
+            query_embedding=query_embedding,
+            embedder_rev=embedder_rev,
         )
     finally:
         await conn.close()
