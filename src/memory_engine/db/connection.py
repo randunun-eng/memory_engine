@@ -32,10 +32,15 @@ async def connect(db_path: str | None = None) -> aiosqlite.Connection:
     # Ensure parent directory exists
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    conn = await aiosqlite.connect(db_path)
+    conn = await aiosqlite.connect(db_path, timeout=30.0)
     await conn.execute("PRAGMA foreign_keys = ON")
     await conn.execute("PRAGMA journal_mode = WAL")
     await conn.execute("PRAGMA synchronous = NORMAL")
+    # Docker Desktop macOS bind-mount + SQLite deadlocks under concurrent
+    # writers. busy_timeout lets SQLite retry internally for up to 30s
+    # rather than surfacing "disk I/O error" / "database is locked" on
+    # the first contended write. See DRIFT `sqlite-index-corruption-during-live-writes`.
+    await conn.execute("PRAGMA busy_timeout = 30000")
     conn.row_factory = aiosqlite.Row
 
     # Load sqlite-vec for the neurons_vec virtual table
