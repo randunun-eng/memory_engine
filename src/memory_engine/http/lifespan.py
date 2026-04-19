@@ -49,11 +49,29 @@ logger = logging.getLogger(__name__)
 _EMBEDDER_SINGLETON: Any = None
 
 
+# Default to a MULTILINGUAL MiniLM so Sinhala/Singlish events (the live
+# alpha workload) produce meaningful similarities against English
+# extractions. MiniLM-L6-v2 is English-only and was rejecting ~80% of
+# real Sinhala→English paraphrases as low_similarity. The L12 multilingual
+# model is 384-dim (same schema), handles 50+ languages including Sinhala,
+# and preserves the per-event-max-similarity gate behaviour. embedder_rev
+# changes accordingly — old L6-rev neurons stay separate in neurons_vec
+# and will not surface via vector recall until re-embedded.
+_EMBEDDER_MODEL = os.environ.get(
+    "MEMORY_ENGINE_EMBEDDER_MODEL",
+    "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+)
+_EMBEDDER_REV = os.environ.get(
+    "MEMORY_ENGINE_EMBEDDER_REV",
+    "paraphrase-multilingual-minilm-l12-v2-1",
+)
+
+
 def _load_embedder_sync() -> Any:
-    """Load MiniLM once. Blocking — call via asyncio.to_thread."""
+    """Load the embedder once. Blocking — call via asyncio.to_thread."""
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    return SentenceTransformer(_EMBEDDER_MODEL)
 
 
 async def _get_embedder() -> Any:
@@ -194,6 +212,7 @@ async def _consolidation_loop(
                         persona_id,
                         private_key,
                         public_key_b64,
+                        embedder_rev=_EMBEDDER_REV,
                         embed_fn=embed_fn,
                         similarity_threshold=similarity_threshold,
                     )
@@ -285,7 +304,7 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
         embed_fn = _build_embed_fn(embedder)
         # Share with HTTP routes (recall embeds queries with the same model).
         app.state.embed_fn = embed_fn
-        app.state.embedder_rev = "sbert-minilm-l6-v2-1"
+        app.state.embedder_rev = _EMBEDDER_REV
 
         task = asyncio.create_task(
             _consolidation_loop(
