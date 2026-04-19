@@ -222,6 +222,10 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
     The loop iterates personas inside each tick, so adding a new persona
     while serving just picks it up on the next cycle — no restart needed.
     """
+    # print() sentinels — unconditional stdout, bypass logging config entirely.
+    # If the lifespan is firing, these are visible in docker logs even if the
+    # logging chain is misconfigured. Remove after logging is stable.
+    print("[lifespan] consolidator_lifespan entered", flush=True)
     api_key = os.environ.get("GEMINI_API_KEY")
     private_key = _decode_env_key("MEMORY_ENGINE_CONSOLIDATOR_PRIVATE_KEY_B64")
     public_key_b64 = os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_PUBLIC_KEY_B64")
@@ -249,17 +253,25 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
     task: asyncio.Task[None] | None = None
     backend: GoogleAIStudioBackend | None = None
 
+    print(
+        f"[lifespan] env check: GEMINI_API_KEY={bool(api_key)} "
+        f"PRIV={private_key is not None} PUB={bool(public_key_b64)}",
+        flush=True,
+    )
     if not api_key:
+        print("[lifespan] DISABLED: GEMINI_API_KEY missing", flush=True)
         logger.warning(
             "consolidator: GEMINI_API_KEY not set; consolidation loop disabled"
         )
     elif private_key is None or not public_key_b64:
+        print("[lifespan] DISABLED: signing keys missing", flush=True)
         logger.warning(
             "consolidator: MEMORY_ENGINE_CONSOLIDATOR_PRIVATE_KEY_B64 / "
             "_PUBLIC_KEY_B64 missing; consolidation loop disabled "
             "(ingest/recall still serve)"
         )
     else:
+        print("[lifespan] env OK — starting consolidator loop", flush=True)
         registry = PromptRegistry()
         registry.load_from_directory()
         cache = PromptCache()

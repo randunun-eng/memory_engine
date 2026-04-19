@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
+
+# Configure root logging on module import so logger.info() calls in
+# memory_engine.* modules reach stdout under uvicorn. uvicorn's --log-level
+# only affects uvicorn's own loggers, not our named module loggers. Default
+# INFO; override via MEMORY_ENGINE_LOG_LEVEL env.
+_log_level = os.environ.get("MEMORY_ENGINE_LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=_log_level,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    force=True,
+)
+logging.getLogger("memory_engine").setLevel(_log_level)
 
 from memory_engine.exceptions import (
     ConfigError,
