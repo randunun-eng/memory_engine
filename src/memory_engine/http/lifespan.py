@@ -119,6 +119,27 @@ async def _update_lag_gauge(conn: Any, persona_id: int) -> None:
     ).set(lag)
 
 
+async def _run_integrity_check(conn: Any) -> tuple[bool, str]:
+    """Run PRAGMA integrity_check. Returns (ok, detail).
+
+    'ok' means result is literally 'ok'. Anything else (malformed page,
+    orphan row, wrong index entry count) is treated as corruption — the
+    loop halts and surfaces the error via the integrity metric so an
+    operator can run `.recover` before the next write compounds the damage.
+    """
+    try:
+        cursor = await conn.execute("PRAGMA integrity_check")
+        rows = await cursor.fetchall()
+    except Exception as e:  # noqa: BLE001 — any exception is a corruption signal
+        return False, f"integrity_check raised: {type(e).__name__}: {e}"
+    if not rows:
+        return False, "integrity_check returned no rows"
+    first = rows[0][0] if rows[0] else None
+    if first == "ok":
+        return True, "ok"
+    return False, "; ".join(str(r[0]) for r in rows[:5])
+
+
 async def _consolidation_loop(
     dispatch: PolicyDispatch,
     embed_fn: Callable[[str], list[float]],
@@ -126,12 +147,44 @@ async def _consolidation_loop(
     public_key_b64: str,
     interval_s: float,
     similarity_threshold: float,
+    integrity_check_every: int = 10,
 ) -> None:
-    logger.info("consolidator loop started: interval=%.1fs", interval_s)
+    """Per-persona consolidation loop.
+
+    Every `integrity_check_every` ticks, run `PRAGMA integrity_check` against
+    the DB before extraction runs. On failure, halt the loop — continuing
+    would cause cascading corruption across neurons/consolidation_log/vec tables.
+    Gauge `wiki_v3_db_integrity_ok` tracks the most-recent result (1/0) so an
+    alert rule can wake an operator.
+    """
+    logger.info(
+        "consolidator loop started: interval=%.1fs integrity_check_every=%d",
+        interval_s, integrity_check_every,
+    )
+    tick = 0
     while True:
+        tick += 1
         try:
             conn = await connect()
             try:
+                # Integrity watchdog — every Nth tick plus always on tick 1.
+                if tick == 1 or tick % integrity_check_every == 0:
+                    ok, detail = await _run_integrity_check(conn)
+                    gauge(
+                        "wiki_v3_db_integrity_ok",
+                        help_text="1 if the most recent PRAGMA integrity_check returned 'ok', 0 otherwise",
+                    ).set(1.0 if ok else 0.0)
+                    if not ok:
+                        logger.error(
+                            "INTEGRITY CHECK FAILED tick=%d detail=%s — halting consolidator loop",
+                            tick, detail,
+                        )
+                        # Stay in the loop so the gauge keeps at 0; do NOT
+                        # run consolidation_pass (could corrupt further).
+                        await asyncio.sleep(interval_s)
+                        continue
+                    logger.info("integrity check OK tick=%d", tick)
+
                 personas = await _list_personas(conn)
                 for persona_id in personas:
                     t0 = time.monotonic()
