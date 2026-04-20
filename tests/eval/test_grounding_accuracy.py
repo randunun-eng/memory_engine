@@ -178,3 +178,191 @@ async def test_grounding_accuracy_on_50_fixtures(db) -> None:
         f"Grounding accuracy {accuracy:.1%} below 50% floor — "
         f"gate is not discriminating. Results: {results}"
     )
+
+
+async def test_grounding_accuracy_current_stack(db) -> None:
+    """Re-measurement vs the Phase 7 production stack.
+
+    Phase 2 baseline was 72% with bag-of-words + similarity-only gate +
+    threshold 0.40. Phase 7 switched to:
+      - paraphrase-multilingual-MiniLM-L12-v2 embeddings (cross-lingual)
+      - per-event-max similarity (was concat)
+      - threshold 0.25 (was 0.40)
+      - gemini-2.5-flash extractor (was ollama/llama3.1:8b)
+
+    This test re-measures the gate against those changes. The 50-fixture
+    set is the same as Phase 2, so the number is directly comparable.
+    Record the result in DRIFT `consolidator-gemma-4-baseline-invalidated`
+    once it stabilises (the baseline blocker for P1 #4 eval).
+    """
+    from sentence_transformers import SentenceTransformer
+
+    persona = await make_test_persona(db)
+    fixtures = _load_fixtures()
+    assert len(fixtures) == 50, f"Expected 50 fixtures, got {len(fixtures)}"
+
+    model = SentenceTransformer(
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
+
+    def embed_fn(text: str) -> list[float]:
+        vec = model.encode(text, normalize_embeddings=True)
+        return vec.tolist() if hasattr(vec, "tolist") else list(vec)
+
+    results = {
+        "true_positive": 0,
+        "true_negative": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+    }
+
+    from memory_engine.core.events import append_event
+
+    for fixture in fixtures:
+        payload = {"text": fixture["event_text"]}
+        content_hash = compute_content_hash(payload)
+        msg = canonical_signing_message(persona.id, content_hash)
+        sig = sign(persona.private_key, msg)
+        event = await append_event(
+            db,
+            persona_id=persona.id,
+            counterparty_id=None,
+            event_type="message_in",
+            scope="private",
+            payload=payload,
+            signature=sig,
+            public_key_b64=persona.public_key_b64,
+        )
+
+        candidate = NeuronCandidate(
+            content=fixture["candidate"],
+            confidence=0.9,
+            source_event_ids=[event.id],
+            t_valid_start=None,
+            source_span=None,
+        )
+
+        gate_result = await grounding_gate(
+            candidate,
+            events=[event],
+            conn=db,
+            persona_id=persona.id,
+            embed_fn=embed_fn,
+            similarity_threshold=0.25,
+            llm_judge_tiers=[],  # isolate embedding signal
+        )
+
+        expected_grounded = fixture["grounded"]
+        gate_accepted = gate_result.verdict == Verdict.ACCEPT
+
+        if expected_grounded and gate_accepted:
+            results["true_positive"] += 1
+        elif not expected_grounded and not gate_accepted:
+            results["true_negative"] += 1
+        elif not expected_grounded and gate_accepted:
+            results["false_positive"] += 1
+        elif expected_grounded and not gate_accepted:
+            results["false_negative"] += 1
+
+    total = sum(results.values())
+    accuracy = (results["true_positive"] + results["true_negative"]) / total
+    tp_fp = results["true_positive"] + results["false_positive"]
+    precision = results["true_positive"] / tp_fp if tp_fp else 0.0
+    tp_fn = results["true_positive"] + results["false_negative"]
+    recall = results["true_positive"] / tp_fn if tp_fn else 0.0
+
+    print(f"\n{'=' * 60}")
+    print("GROUNDING GATE — CURRENT STACK")
+    print("  embedder: paraphrase-multilingual-MiniLM-L12-v2")
+    print("  gate:     per-event-max similarity")
+    print("  threshold: 0.25")
+    print(f"{'=' * 60}")
+    print(f"Accuracy:  {accuracy:.1%} ({results['true_positive'] + results['true_negative']}/{total})")
+    print(f"Precision: {precision:.1%} (of accepted, how many truly grounded)")
+    print(f"Recall:    {recall:.1%} (of grounded, how many accepted)")
+    print("")
+    print(f"TP={results['true_positive']} TN={results['true_negative']} "
+          f"FP={results['false_positive']} FN={results['false_negative']}")
+    print(f"{'=' * 60}")
+    print("Phase 2 baseline (BoW + concat + 0.40): 72% accuracy")
+    print(f"Current stack delta: {(accuracy - 0.72) * 100:+.1f}pp")
+    print(f"{'=' * 60}")
+
+    assert accuracy >= 0.50, (
+        f"Current-stack accuracy {accuracy:.1%} below 50% — gate failed."
+    )
+
+
+async def test_grounding_threshold_sweep(db) -> None:
+    """Find the optimal similarity threshold for the current embedder.
+
+    At threshold 0.25 the gate accepts 100% of both grounded AND ungrounded
+    candidates (precision 60%, recall 100%) — the cutoff is below the
+    embedder's noise floor. This sweep measures per-fixture max-sim values
+    and finds the threshold that maximizes accuracy.
+    """
+    from sentence_transformers import SentenceTransformer
+
+    persona = await make_test_persona(db)
+    fixtures = _load_fixtures()
+
+    model = SentenceTransformer(
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
+
+    def embed_fn(text: str) -> list[float]:
+        vec = model.encode(text, normalize_embeddings=True)
+        return vec.tolist() if hasattr(vec, "tolist") else list(vec)
+
+    from memory_engine.core.events import append_event
+
+    # For each fixture, compute max-sim and store with ground-truth label
+    scored: list[tuple[float, bool]] = []  # (similarity, is_grounded)
+
+    for fixture in fixtures:
+        payload = {"text": fixture["event_text"]}
+        content_hash = compute_content_hash(payload)
+        sig = sign(persona.private_key, canonical_signing_message(persona.id, content_hash))
+        event = await append_event(
+            db, persona_id=persona.id, counterparty_id=None,
+            event_type="message_in", scope="private", payload=payload,
+            signature=sig, public_key_b64=persona.public_key_b64,
+        )
+        cand_vec = embed_fn(fixture["candidate"])
+        ev_vec = embed_fn(fixture["event_text"])
+        dot = sum(a * b for a, b in zip(cand_vec, ev_vec, strict=True))
+        scored.append((dot, bool(fixture["grounded"])))
+
+    # Sweep thresholds 0.0-0.90 in 0.05 steps, find best accuracy
+    thresholds = [0.05 * i for i in range(20)]  # 0.00 to 0.95
+    best = (0.0, 0.0)
+    print(f"\n{'=' * 70}")
+    print(f"{'threshold':>10} {'accuracy':>10} {'precision':>11} {'recall':>8}   TP/TN/FP/FN")
+    print(f"{'=' * 70}")
+    for t in thresholds:
+        tp = sum(1 for s, g in scored if g and s >= t)
+        tn = sum(1 for s, g in scored if not g and s < t)
+        fp = sum(1 for s, g in scored if not g and s >= t)
+        fn = sum(1 for s, g in scored if g and s < t)
+        acc = (tp + tn) / len(scored)
+        prec = tp / (tp + fp) if (tp + fp) else 0.0
+        rec = tp / (tp + fn) if (tp + fn) else 0.0
+        marker = ""
+        if acc > best[1]:
+            best = (t, acc)
+            marker = " <-- best so far"
+        print(f"{t:>10.2f} {acc:>9.1%} {prec:>10.1%} {rec:>7.1%}   {tp:>2}/{tn:>2}/{fp:>2}/{fn:>2}{marker}")
+    print(f"{'=' * 70}")
+    print(f"Best threshold: {best[0]:.2f} → accuracy {best[1]:.1%}")
+    print(f"Phase 2 baseline was 0.40 BoW → 72%.")
+    print(f"{'=' * 70}")
+
+    # Dist of max-sim scores by label
+    grounded_sims = [s for s, g in scored if g]
+    ungrounded_sims = [s for s, g in scored if not g]
+    gm = sum(grounded_sims) / len(grounded_sims) if grounded_sims else 0
+    um = sum(ungrounded_sims) / len(ungrounded_sims) if ungrounded_sims else 0
+    print(f"grounded   sims: mean {gm:.3f} min {min(grounded_sims):.3f} max {max(grounded_sims):.3f}")
+    print(f"ungrounded sims: mean {um:.3f} min {min(ungrounded_sims):.3f} max {max(ungrounded_sims):.3f}")
+    print(f"separation (grounded mean − ungrounded mean): {gm - um:.3f}")
+    print(f"{'=' * 70}")

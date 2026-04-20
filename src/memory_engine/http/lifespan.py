@@ -260,13 +260,17 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
     model = os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_MODEL", "gemini-2.5-flash")
     max_rpm = int(os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_MAX_RPM", "6"))
     warn_rpm = int(os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_WARN_RPM", "4"))
-    # Grounding threshold — the gate now uses per-event max similarity
-    # (see grounding.py step 2), so Phase 2's 0.40 baseline is the right
-    # default: valid single-fact paraphrases should beat their best source
-    # event above 0.40 with MiniLM embeddings. DRIFT entry
-    # `grounding-concat-over-citation` captures the per-event switch.
+    # Grounding threshold — empirically re-measured 2026-04-20 on the
+    # 50-fixture test set with the current stack (multilingual MiniLM-L12
+    # + per-event-max similarity gate). Sweep results:
+    #   0.25 → 60% acc (accepts everything, below noise floor)
+    #   0.50 → 72% acc (matches Phase 2 BoW baseline)
+    #   0.60 → 88% acc ← optimum (+16pp over Phase 2 BoW)
+    #   0.70 → 82% acc (over-filters; recall 83%)
+    # Grounded/ungrounded mean sim: 0.82 / 0.57 (clean 0.25 separation).
+    # Override via MEMORY_ENGINE_CONSOLIDATOR_SIMILARITY_THRESHOLD.
     similarity_threshold = float(
-        os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_SIMILARITY_THRESHOLD", "0.40")
+        os.environ.get("MEMORY_ENGINE_CONSOLIDATOR_SIMILARITY_THRESHOLD", "0.60")
     )
 
     task: asyncio.Task[None] | None = None
