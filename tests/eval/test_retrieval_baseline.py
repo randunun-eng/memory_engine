@@ -124,6 +124,34 @@ def _precision_at_k(ranked_ids: list[int], relevant_ids: set[int], k: int) -> fl
     return hits / len(top)
 
 
+def _hit_at_k(ranked_ids: list[int], relevant_ids: set[int], k: int) -> int:
+    """1 if any relevant neuron is in top-k, else 0. Binary metric —
+    unlike P@K it isn't bounded by the number of relevant items per query,
+    so it's more interpretable on 1-relevant-per-query corpora."""
+    return int(any(nid in relevant_ids for nid in ranked_ids[:k]))
+
+
+def _ndcg_at_k(ranked_ids: list[int], relevant_ids: set[int], k: int) -> float:
+    """Normalized Discounted Cumulative Gain @ k with binary relevance.
+
+    DCG = Σ rel_i / log2(i + 1) over top-k positions (1-indexed).
+    iDCG = best-case DCG (all relevant ranked first).
+    NDCG = DCG / iDCG. 0 if no relevant items exist.
+    """
+    import math
+
+    if not relevant_ids:
+        return 0.0
+    dcg = 0.0
+    for rank, nid in enumerate(ranked_ids[:k], start=1):
+        if nid in relevant_ids:
+            dcg += 1.0 / math.log2(rank + 1)
+    # Ideal DCG: all R relevant items ranked in the top R positions
+    ideal_hits = min(len(relevant_ids), k)
+    idcg = sum(1.0 / math.log2(r + 1) for r in range(1, ideal_hits + 1))
+    return dcg / idcg if idcg > 0 else 0.0
+
+
 async def test_retrieval_baseline_mrr_and_precision(db) -> None:
     """Compute MRR@10 and P@5 on the frozen seed corpus."""
     from sentence_transformers import SentenceTransformer
@@ -144,6 +172,7 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
     labels_by_id = {lbl["query_id"]: lbl for lbl in labels}
 
     per_query: list[dict[str, Any]] = []
+    adversarial: list[dict[str, Any]] = []
     zero_recall: list[str] = []
 
     for q in queries:
@@ -152,12 +181,8 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
             pytest.fail(f"Missing relevance labels for {q['id']}")
         relevant_fixture_ids = set(label["relevant_ids"])
         relevant_db_ids = {id_map[fid] for fid in relevant_fixture_ids if fid in id_map}
-        if not relevant_db_ids:
-            continue  # no ground truth — skip
 
-        # Embed query with the same model the recall path uses
         query_embedding = list(embed_fn(q["query"]))
-
         results = await recall(
             db,
             persona_id=persona.id,
@@ -168,9 +193,35 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
             embedder_rev="paraphrase-multilingual-minilm-l12-v2-1",
         )
         ranked_ids = [r.neuron.id for r in results]
+        is_adversarial = bool(q.get("adversarial"))
+
+        if is_adversarial:
+            # Adversarial: relevance is the empty set by construction.
+            # Precision-on-adversarial = fraction of top-k positions that
+            # ARE NOT in the fixture corpus OR are correctly empty. A
+            # strict retrieval system would return empty, but BM25/vector
+            # always return SOMETHING — the question is whether it's all
+            # low-confidence filler (i.e. doesn't match any real cluster).
+            adversarial.append({
+                "query_id": q["id"],
+                "query": q["query"],
+                "n_retrieved": len(ranked_ids),
+                "top_content": [
+                    next((n for n in _load(FIXTURES / "eval_neurons.yaml")
+                          if id_map.get(n["id"]) == nid), {}).get("content", "")[:50]
+                    for nid in ranked_ids[:3]
+                ],
+            })
+            continue
+
+        if not relevant_db_ids:
+            continue
 
         mrr = _mrr_at_k(ranked_ids, relevant_db_ids, k=10)
         p_at_5 = _precision_at_k(ranked_ids, relevant_db_ids, k=5)
+        hit_at_5 = _hit_at_k(ranked_ids, relevant_db_ids, k=5)
+        hit_at_10 = _hit_at_k(ranked_ids, relevant_db_ids, k=10)
+        ndcg_at_10 = _ndcg_at_k(ranked_ids, relevant_db_ids, k=10)
 
         per_query.append({
             "query_id": q["id"],
@@ -180,6 +231,9 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
             "n_retrieved": len(ranked_ids),
             "mrr_at_10": mrr,
             "p_at_5": p_at_5,
+            "hit_at_5": hit_at_5,
+            "hit_at_10": hit_at_10,
+            "ndcg_at_10": ndcg_at_10,
             "first_hit_rank": next(
                 (i + 1 for i, nid in enumerate(ranked_ids) if nid in relevant_db_ids),
                 None,
@@ -188,35 +242,50 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
         if mrr == 0.0:
             zero_recall.append(q["id"])
 
-    # Aggregate
+    # Aggregate over non-adversarial
     n = len(per_query)
     avg_mrr = sum(r["mrr_at_10"] for r in per_query) / n if n else 0.0
     avg_p5 = sum(r["p_at_5"] for r in per_query) / n if n else 0.0
+    avg_hit5 = sum(r["hit_at_5"] for r in per_query) / n if n else 0.0
+    avg_hit10 = sum(r["hit_at_10"] for r in per_query) / n if n else 0.0
+    avg_ndcg = sum(r["ndcg_at_10"] for r in per_query) / n if n else 0.0
 
     print(f"\n{'=' * 72}")
-    print("RETRIEVAL BASELINE — P1 #4 (frozen 30-neuron / 20-query fixture)")
+    print("RETRIEVAL BASELINE — P1 #4 (frozen 30-neuron / 20+5-query fixture)")
     print(f"{'=' * 72}")
     print(f"Stack: BM25Plus + vector (MiniLM-L12) + graph, RRF fusion")
     print(f"Corpus: 30 neurons across 6 clusters")
-    print(f"Queries: {n} (with non-empty relevance labels)")
+    print(f"Real queries: {n} (with non-empty relevance labels)")
+    print(f"Adversarial: {len(adversarial)} (should return no corpus hits)")
     print(f"{'-' * 72}")
     print(f"MRR@10:       {avg_mrr:.3f}")
-    print(f"P@5:          {avg_p5:.3f}")
+    print(f"NDCG@10:      {avg_ndcg:.3f}   ← proper ranked-relevance metric")
+    print(f"Hit@5:        {avg_hit5:.3f}   ← any relevant in top 5")
+    print(f"Hit@10:       {avg_hit10:.3f}   ← any relevant in top 10")
+    print(f"P@5:          {avg_p5:.3f}   ← ceiling-bounded, see fixture")
     print(f"Zero-recall:  {len(zero_recall)}/{n} queries ({100 * len(zero_recall) / n if n else 0:.0f}%)")
     print(f"{'=' * 72}")
-    print(f"{'query_id':<8} {'rank':>4} {'mrr':>5} {'p@5':>5}   query")
+    print(f"{'query_id':<8} {'rank':>4} {'mrr':>5} {'hit@5':>5} {'ndcg':>5}   query")
     print(f"{'-' * 72}")
     for r in per_query:
         rank = r["first_hit_rank"]
         rank_str = str(rank) if rank else "-"
-        print(f"{r['query_id']:<8} {rank_str:>4} {r['mrr_at_10']:>5.2f} {r['p_at_5']:>5.2f}   {r['query']}")
+        print(
+            f"{r['query_id']:<8} {rank_str:>4} {r['mrr_at_10']:>5.2f} "
+            f"{r['hit_at_5']:>5} {r['ndcg_at_10']:>5.2f}   {r['query']}"
+        )
+    print(f"{'=' * 72}")
+    print("ADVERSARIAL (corpus has no coverage — top-3 returned):")
+    print(f"{'-' * 72}")
+    for a in adversarial:
+        print(f"{a['query_id']:<10} {a['query']}")
+        for c in a["top_content"]:
+            print(f"           ↳ {c}")
     print(f"{'=' * 72}")
     if zero_recall:
-        print(f"Zero-recall queries (first relevant not in top-10): {zero_recall}")
+        print(f"Zero-recall queries: {zero_recall}")
     print(f"{'=' * 72}")
 
-    # Acceptance criterion from CLAUDE.md §9 Phase 7: MRR@10 ≥ 0.6, P@5 ≥ 0.7
-    # but we're recording, not gating. Assert a low floor so the test only
-    # fails if something is catastrophically wrong.
     assert avg_mrr >= 0.3, f"MRR@10 {avg_mrr:.3f} below 0.3 floor"
-    assert avg_p5 >= 0.1, f"P@5 {avg_p5:.3f} below 0.1 floor"
+    assert avg_ndcg >= 0.3, f"NDCG@10 {avg_ndcg:.3f} below 0.3 floor"
+    assert avg_hit10 >= 0.5, f"Hit@10 {avg_hit10:.3f} below 0.5 floor"

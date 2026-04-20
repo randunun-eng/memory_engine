@@ -89,3 +89,33 @@
   query: "multilingual sentence embeddings"
   lens: "domain"
   expected_cluster: 6
+
+# --- Adversarial queries: should return NO relevant neurons ---
+# These measure precision-against-noise. A good retrieval system returns
+# zero relevant hits in the top-K for these (our corpus has no coverage).
+# If any of these surface fixture neurons, retrieval is over-reaching.
+- id: q_adv_01
+  query: "quantum computing algorithms"
+  lens: "auto"
+  expected_cluster: null
+  adversarial: true
+- id: q_adv_02
+  query: "medieval castle architecture"
+  lens: "auto"
+  expected_cluster: null
+  adversarial: true
+- id: q_adv_03
+  query: "how do penguins raise their chicks"
+  lens: "auto"
+  expected_cluster: null
+  adversarial: true
+- id: q_adv_04
+  query: "best recipe for chicken curry"
+  lens: "auto"
+  expected_cluster: null
+  adversarial: true
+- id: q_adv_05
+  query: "stock market analysis techniques"
+  lens: "auto"
+  expected_cluster: null
+  adversarial: true

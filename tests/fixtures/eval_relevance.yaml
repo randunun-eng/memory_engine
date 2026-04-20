@@ -105,3 +105,26 @@
   lens: domain
   relevant_ids:
   - n029
+# Adversarial queries — ground-truth relevance is always the empty set.
+# Appended by hand; regenerate with build_eval_relevance.py only if the
+# corpus itself is extended to cover these topics.
+- query_id: q_adv_01
+  query: quantum computing algorithms
+  lens: auto
+  relevant_ids: []
+- query_id: q_adv_02
+  query: medieval castle architecture
+  lens: auto
+  relevant_ids: []
+- query_id: q_adv_03
+  query: how do penguins raise their chicks
+  lens: auto
+  relevant_ids: []
+- query_id: q_adv_04
+  query: best recipe for chicken curry
+  lens: auto
+  relevant_ids: []
+- query_id: q_adv_05
+  query: stock market analysis techniques
+  lens: auto
+  relevant_ids: []
