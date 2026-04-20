@@ -1,0 +1,156 @@
+# P1 #4 eval baseline — frozen seed corpus of neurons.
+#
+# 30 neurons across 6 topic clusters (5 per cluster). Deliberately
+# diverse so a BM25-only retriever and a vector-only retriever will
+# each succeed on different query patterns, letting RRF fusion show
+# its value.
+#
+# Each neuron is materialised by the eval harness via a minimal
+# append_event + manual INSERT into neurons + neurons_vec. Corpus is
+# frozen here; changes require a new fixture version (filename bump).
+#
+# counterparty_id: 1 for contact-X scoped facts; NULL treated as domain.
+# kind is derived from presence of counterparty_id.
+
+---
+# --- Cluster 1: electronics / microcontrollers (counterparty 1) ---
+- id: n001
+  content: "Harsha alone soldered the 4cf board."
+  counterparty_id: 1
+  tier: working
+- id: n002
+  content: "The ESP32 on the desk has pin 8 bent."
+  counterparty_id: 1
+  tier: working
+- id: n003
+  content: "Pati bole is in the back rack."
+  counterparty_id: 1
+  tier: working
+- id: n004
+  content: "The digital microscope shows the board clearly."
+  counterparty_id: 1
+  tier: working
+- id: n005
+  content: "Arduino lessons series was started by Harsha."
+  counterparty_id: 1
+  tier: working
+
+# --- Cluster 2: family / spouse (counterparty 2) ---
+- id: n006
+  content: "Babi usually finishes work around 6pm."
+  counterparty_id: 2
+  tier: working
+- id: n007
+  content: "Babi prefers Sinhala for casual messages."
+  counterparty_id: 2
+  tier: working
+- id: n008
+  content: "Babi's birthday is in December."
+  counterparty_id: 2
+  tier: working
+- id: n009
+  content: "Babi studied architecture."
+  counterparty_id: 2
+  tier: working
+- id: n010
+  content: "Babi and I went to Kandy last weekend."
+  counterparty_id: 2
+  tier: working
+
+# --- Cluster 3: hobbies / RC cars (counterparty 3) ---
+- id: n011
+  content: "My RC car had water damage last week."
+  counterparty_id: 3
+  tier: working
+- id: n012
+  content: "Tharindu sourced a propeller set from a salvaged box."
+  counterparty_id: 3
+  tier: working
+- id: n013
+  content: "Stephan reserved one of the game consoles."
+  counterparty_id: 3
+  tier: working
+- id: n014
+  content: "The TV box I bought needs the driver changed."
+  counterparty_id: 3
+  tier: working
+- id: n015
+  content: "I was up 6 hours fighting the TV box driver."
+  counterparty_id: 3
+  tier: working
+
+# --- Cluster 4: honey bees / nature (counterparty 4) ---
+- id: n016
+  content: "Honey bees vote on swarm direction."
+  counterparty_id: 4
+  tier: semantic
+- id: n017
+  content: "The cool evolution topic is honey bees."
+  counterparty_id: 4
+  tier: semantic
+- id: n018
+  content: "A beehive design inspired one strength calculation."
+  counterparty_id: 4
+  tier: working
+- id: n019
+  content: "Dansala tokens are a sharing practice in Sri Lanka."
+  counterparty_id: 4
+  tier: semantic
+- id: n020
+  content: "Paper aeroplane aerodynamics was the Tom Stanton video."
+  counterparty_id: 4
+  tier: working
+
+# --- Cluster 5: self facts (persona-scoped, kind=self_fact) ---
+- id: n021
+  content: "I am a digital-twin operator building memory systems."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+- id: n022
+  content: "I prefer terse direct replies over hedged ones."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+- id: n023
+  content: "I live in Sri Lanka."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+- id: n024
+  content: "I work on distributed systems and Python."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+- id: n025
+  content: "I finish work around 6pm most weekdays."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+
+# --- Cluster 6: domain / general knowledge (kind=domain_fact) ---
+- id: n026
+  content: "BM25Plus is a ranking function that handles small corpora better than BM25Okapi."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n027
+  content: "SQLite WAL mode allows concurrent readers with a single writer."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n028
+  content: "Docker Desktop macOS bind-mounts have SQLite concurrency issues."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n029
+  content: "paraphrase-multilingual-MiniLM-L12-v2 is a 384-dim multilingual sentence embedder."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n030
+  content: "Ed25519 is a digital signature scheme with 32-byte keys."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
