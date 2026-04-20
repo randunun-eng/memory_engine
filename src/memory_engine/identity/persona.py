@@ -70,11 +70,81 @@ class IdentityDocument:
         return len(self.forbidden_topics) > 0
 
 
+def _normalize_rich_to_legacy(data: dict) -> dict:
+    """Convert twincore-alpha 'rich' schema to the legacy simple schema
+    this parser consumes. See DRIFT `identity-schema-mismatch-twincore-vs-phase4`.
+
+    Rich shape:   persona_slug, schema_version, owner, issued_at,
+                  role.{title, domain, responsibilities[]}, values[],
+                  tone_defaults.{formality, length_preference, emoji},
+                  non_negotiables: [{id, rule, evaluator, trigger_patterns}]
+    Legacy shape: persona, version, signed_by, signed_at,
+                  self_facts: [{text, confidence}],
+                  non_negotiables: [str],
+                  forbidden_topics: [str],
+                  deletion_policy: {inbound, outbound}
+
+    Conversion rules:
+    - self_facts derived from `values[]` (each value string becomes a
+      SelfFact) plus `role.title` if present — these are persona-level
+      declarations the model should treat as self-truth.
+    - non_negotiables: each dict's `rule` field becomes the string.
+    - version: schema_version is a dotted string ("1.0"); take the major
+      part as the integer version.
+    """
+    out: dict = dict(data)  # preserve unknown keys
+    # persona / version mapping
+    if "persona" not in out and "persona_slug" in data:
+        out["persona"] = data["persona_slug"]
+    if "version" not in out:
+        sv = data.get("schema_version")
+        if sv is not None:
+            try:
+                out["version"] = int(str(sv).split(".")[0])
+            except (ValueError, AttributeError):
+                out["version"] = 1
+    if "signed_by" not in out and "owner" in data:
+        out["signed_by"] = data["owner"]
+    if "signed_at" not in out and "issued_at" in data:
+        out["signed_at"] = data["issued_at"]
+
+    # Derive self_facts from role.title + values[] if not already provided.
+    if "self_facts" not in out:
+        self_facts: list[dict] = []
+        role = data.get("role")
+        if isinstance(role, dict) and isinstance(role.get("title"), str):
+            self_facts.append({"text": f"I am {role['title']}.", "confidence": 1.0})
+        values = data.get("values")
+        if isinstance(values, list):
+            for v in values:
+                if isinstance(v, str) and v.strip():
+                    self_facts.append({"text": v, "confidence": 1.0})
+        if self_facts:
+            out["self_facts"] = self_facts
+
+    # Convert structured non_negotiables to flat strings.
+    raw_nn = data.get("non_negotiables")
+    if isinstance(raw_nn, list) and raw_nn and isinstance(raw_nn[0], dict):
+        out["non_negotiables"] = [
+            str(item.get("rule", "")).strip()
+            for item in raw_nn
+            if isinstance(item, dict) and item.get("rule")
+        ]
+
+    return out
+
+
 def parse_identity_yaml(yaml_text: str) -> IdentityDocument:
     """Parse an identity document from YAML text.
 
-    Validates required fields. Does NOT verify the signature — that's
-    a Phase 5 concern requiring the operator's keypair.
+    Accepts two schemas:
+      - Legacy (Phase 4): persona, version, signed_by, signed_at, ...
+      - Rich (twincore-alpha): persona_slug, schema_version, owner, issued_at,
+        role{}, values[], tone_defaults{}, structured non_negotiables[].
+
+    Rich docs are normalized to the legacy shape before validation. See
+    DRIFT `identity-schema-mismatch-twincore-vs-phase4`. Validates required
+    fields. Does NOT verify the signature — that's a Phase 5 concern.
 
     Args:
         yaml_text: Raw YAML string.
@@ -92,6 +162,12 @@ def parse_identity_yaml(yaml_text: str) -> IdentityDocument:
 
     if not isinstance(data, dict):
         raise ConfigError("Identity document must be a YAML mapping")
+
+    # Auto-detect rich schema by the presence of any rich-only key, and
+    # normalize to the legacy shape so the downstream validator is happy.
+    rich_markers = {"persona_slug", "schema_version", "owner", "issued_at", "role"}
+    if rich_markers.intersection(data.keys()):
+        data = _normalize_rich_to_legacy(data)
 
     # Required fields
     for required in ("persona", "version", "signed_by", "signed_at"):
