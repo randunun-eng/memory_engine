@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.twincore.pipeline-observer</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/YOUR_USER/Memory_engine/twincore-alpha/bin/observe-pipeline.sh</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USER/Library/Logs/twincore/observer.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USER/Library/Logs/twincore/observer.err</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
+
+<!--
+Install:
+  cp ai.twincore.pipeline-observer.plist.example ~/Library/LaunchAgents/ai.twincore.pipeline-observer.plist
+  # edit: replace YOUR_USER with `whoami` output
+  launchctl load ~/Library/LaunchAgents/ai.twincore.pipeline-observer.plist
+
+Inspect:
+  bin/observe-summary.sh 24h
+  tail -f ~/Library/Logs/twincore/pipeline-trace.jsonl
+
+Stop:
+  launchctl unload ~/Library/LaunchAgents/ai.twincore.pipeline-observer.plist
+-->
