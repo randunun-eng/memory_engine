@@ -14,6 +14,7 @@ from memory_engine.exceptions import (
     SignatureInvalid,
 )
 from memory_engine.http.lifespan import consolidator_lifespan
+from memory_engine.http.routes.chat_context import router as chat_context_router
 from memory_engine.http.routes.identity import router as identity_router
 from memory_engine.http.routes.ingest import router as ingest_router
 from memory_engine.http.routes.mcp import router as mcp_router
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(mcp_router, prefix="/v1")
     app.include_router(identity_router, prefix="/v1")
     app.include_router(ingest_router, prefix="/v1")
+    app.include_router(chat_context_router, prefix="/v1")
 
     @app.get("/health")
     async def health() -> dict[str, str]:

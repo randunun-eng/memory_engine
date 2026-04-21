@@ -679,87 +679,69 @@ def _passes_score_threshold(result: dict) -> bool:
     return bm25 >= RECALL_MIN_BM25 or vector >= RECALL_MIN_VECTOR
 
 
-def fetch_recent_thread(chat_jid: str, limit: int = 20) -> list[dict]:
-    """Read the last `limit` messages with this chat from the bridge DB,
-    oldest first. Used to give Gemini the actual conversation context
-    it needs to produce a coherent next-turn reply.
+async def fetch_chat_context(
+    client: httpx.AsyncClient,
+    counterparty: str,
+    query: str,
+) -> tuple[list[dict], list[str], list[dict]]:
+    """Call memory_engine /v1/chat_context — single source of truth for
+    per-chat memory. Returns (recent_messages, voice_samples, top_neurons).
 
-    Without this, the twin is answering an isolated inbound like someone
-    joining a conversation halfway through — producing drafts that sound
-    right in isolation but disconnected from the flow (the 'wake up from
-    a dream' feel the operator flagged on 2026-04-21).
-
-    Returns entries shaped like:
-      {"role": "contact" | "me", "text": str, "ts": str, "media": bool}
-
-    Multi-line content is preserved. Media with no OCR is labeled
-    [media:<type>]. If the contact has an outbound LID separate from
-    their inbound phone JID (WhatsApp's device-linked ID quirk), pass
-    both JIDs in the caller.
+    Architectural boundary: twin-agent no longer reads the bridge DB for
+    conversation history. memory_engine's chat_context endpoint bundles
+    recent events + voice samples + recall results in one lens-scoped
+    call (rule 12 enforced at SQL). If memory_engine is unreachable the
+    twin degrades to an empty context rather than crashing.
     """
-    if not Path(WHATSAPP_BRIDGE_DB_PATH).exists():
-        return []
-    conn = sqlite3.connect(f"file:{WHATSAPP_BRIDGE_DB_PATH}?mode=ro", uri=True)
-    conn.text_factory = lambda b: b.decode("utf-8", errors="replace")
-    conn.row_factory = sqlite3.Row
     try:
-        rows = conn.execute(
-            """
-            SELECT content, timestamp, is_from_me, media_type
-            FROM messages
-            WHERE chat_jid = ?
-            ORDER BY timestamp DESC
-            LIMIT ?
-            """,
-            (chat_jid, limit),
-        ).fetchall()
-    finally:
-        conn.close()
-    out: list[dict] = []
-    for row in reversed(rows):  # chronological oldest-first for prompt
-        text = row["content"] or ""
-        media = bool(row["media_type"])
-        if not text and media:
-            text = f"[media:{row['media_type']}]"
-        elif not text:
-            continue  # skip truly empty rows
-        out.append({
-            "role": "me" if row["is_from_me"] else "contact",
-            "text": text,
-            "ts": str(row["timestamp"]),
-            "media": media,
-        })
-    return out
+        r = await client.post(
+            f"{MEMORY_ENGINE_URL}/v1/chat_context",
+            json={
+                "persona_slug": PERSONA_SLUG,
+                "counterparty_external_ref": counterparty,
+                "query": query,
+                "recent_limit": 20,
+                "voice_limit": 15,
+                "top_k": 8,
+            },
+            headers={"Content-Type": "application/json; charset=utf-8"},
+            timeout=15.0,
+        )
+        if r.status_code >= 400:
+            log.error(
+                "chat_context failed status=%d body=%s",
+                r.status_code, r.text[:200],
+            )
+            return [], [], []
+        data = r.json()
+    except Exception as e:
+        log.exception("chat_context error: %s", e)
+        return [], [], []
 
-
-def fetch_recent_operator_replies(
-    chat_jid: str, limit: int = 15
-) -> list[str]:
-    """Last N messages the operator actually sent to this chat — used
-    to anchor the draft's voice/length/register to the operator's real
-    style with THIS specific contact. Returns a simple list of the
-    message texts, oldest-first."""
-    if not Path(WHATSAPP_BRIDGE_DB_PATH).exists():
-        return []
-    conn = sqlite3.connect(f"file:{WHATSAPP_BRIDGE_DB_PATH}?mode=ro", uri=True)
-    conn.text_factory = lambda b: b.decode("utf-8", errors="replace")
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute(
-            """
-            SELECT content
-            FROM messages
-            WHERE chat_jid = ?
-              AND is_from_me = 1
-              AND COALESCE(content, '') != ''
-            ORDER BY timestamp DESC
-            LIMIT ?
-            """,
-            (chat_jid, limit),
-        ).fetchall()
-    finally:
-        conn.close()
-    return [r["content"] for r in reversed(rows)]
+    recent = [
+        {
+            "role": "me" if m.get("role") == "me" else "contact",
+            "text": m.get("text", ""),
+            "ts": m.get("ts", ""),
+            "media": bool(m.get("media_type")),
+        }
+        for m in data.get("recent_messages", [])
+    ]
+    voice = list(data.get("voice_samples", []))
+    neurons = [
+        {
+            "content": n.get("content", ""),
+            "scores": n.get("scores", {}),
+            "kind": n.get("kind", ""),
+            "tier": n.get("tier", ""),
+        }
+        for n in data.get("top_neurons", [])
+    ]
+    # Apply the existing score threshold to top_neurons so adversarial
+    # recall doesn't pollute the prompt. chat_context returns raw, we
+    # filter here.
+    neurons = [n for n in neurons if _passes_score_threshold(n)][:5]
+    return recent, voice, neurons
 
 
 async def recall_context(
@@ -1153,28 +1135,19 @@ async def process_message(
         )
         return
 
-    # 3. Recall context (long-term memory)
-    context = await recall_context(client, msg.content, counterparty)
-    log.info("Recalled %d context neurons for msg=%s", len(context), msg.id)
-
-    # 3a. Recent thread (short-term, in-the-moment conversation flow).
-    # Without this, drafts sound like they were written by someone who
-    # just walked into the conversation — the 'wake up from a dream'
-    # feel the operator flagged. Pulling last 20 messages from the
-    # bridge keeps the model grounded in what's actually being discussed.
-    recent_thread = await asyncio.to_thread(fetch_recent_thread, msg.chat_jid, 20)
-    # 3b. Voice samples — operator's actual recent replies to this chat.
-    # Used to anchor style/length; the twin writes 20 words where the
-    # operator writes 2. Voice samples fix that.
-    voice_samples = await asyncio.to_thread(
-        fetch_recent_operator_replies, msg.chat_jid, 15
+    # 3. Fetch the per-chat memory bundle from memory_engine — single
+    # lens-scoped call returns recent thread + voice samples + top
+    # neurons for THIS counterparty only. Rule 12 is enforced server-
+    # side so no cross-chat leak is possible.
+    recent_thread, voice_samples, context = await fetch_chat_context(
+        client, counterparty, msg.content
     )
     log.info(
-        "thread=%d messages, voice_samples=%d replies",
-        len(recent_thread), len(voice_samples),
+        "chat_context: thread=%d voice=%d neurons=%d for msg=%s",
+        len(recent_thread), len(voice_samples), len(context), msg.id,
     )
 
-    # 3c. Look up per-contact profile (α.2). None if not classified.
+    # 3b. Look up per-contact profile (α.2). None if not classified.
     profile = await fetch_contact_profile(client, counterparty)
     if profile:
         log.info(
