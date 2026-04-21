@@ -119,3 +119,137 @@
   lens: "auto"
   expected_cluster: null
   adversarial: true
+
+# --- Cluster 7: travel / Sri Lanka ---
+- id: q21
+  query: "Kandy perahera"
+  lens: "auto"
+  expected_cluster: 7
+- id: q22
+  query: "who built Sigiriya"
+  lens: "auto"
+  expected_cluster: 7
+- id: q23
+  query: "Kandy to Ella train"
+  lens: "auto"
+  expected_cluster: 7
+- id: q24
+  query: "best surfing season in Sri Lanka"
+  lens: "auto"
+  expected_cluster: 7
+- id: q25
+  query: "leopards in Yala"
+  lens: "auto"
+  expected_cluster: 7
+
+# --- Cluster 8: memory-engine project facts ---
+- id: q26
+  query: "what is our BM25 algorithm"
+  lens: "auto"
+  expected_cluster: 8
+- id: q27
+  query: "consolidator tick frequency"
+  lens: "auto"
+  expected_cluster: 8
+- id: q28
+  query: "which phase are we in"
+  lens: "auto"
+  expected_cluster: 8
+- id: q29
+  query: "grounding gate threshold"
+  lens: "auto"
+  expected_cluster: 8
+- id: q30
+  query: "why we moved off bind mounts"
+  lens: "auto"
+  expected_cluster: 8
+
+# --- Cluster 9: food ---
+- id: q31
+  query: "what is pol sambol"
+  lens: "auto"
+  expected_cluster: 9
+- id: q32
+  query: "kiribath occasion"
+  lens: "auto"
+  expected_cluster: 9
+- id: q33
+  query: "how are hoppers made"
+  lens: "auto"
+  expected_cluster: 9
+- id: q34
+  query: "watalappam ingredient"
+  lens: "auto"
+  expected_cluster: 9
+- id: q35
+  query: "kottu street food"
+  lens: "auto"
+  expected_cluster: 9
+
+# --- Cluster 10: systems domain ---
+- id: q36
+  query: "what is RRF fusion"
+  lens: "domain"
+  expected_cluster: 10
+- id: q37
+  query: "sqlite vector extension"
+  lens: "domain"
+  expected_cluster: 10
+- id: q38
+  query: "FastAPI validation library"
+  lens: "domain"
+  expected_cluster: 10
+- id: q39
+  query: "what does NDCG reward"
+  lens: "domain"
+  expected_cluster: 10
+- id: q40
+  query: "whatsmeow protocol implementation"
+  lens: "domain"
+  expected_cluster: 10
+
+# --- Cluster 11 + 12: extra self/spouse ---
+- id: q41
+  query: "what do I drink in the morning"
+  lens: "self"
+  expected_cluster: 11
+- id: q42
+  query: "my musical hobby"
+  lens: "self"
+  expected_cluster: 11
+- id: q43
+  query: "where did babi study"
+  lens: "auto"
+  expected_cluster: 12
+- id: q44
+  query: "babi allergies"
+  lens: "auto"
+  expected_cluster: 12
+- id: q45
+  query: "babi favourite music"
+  lens: "auto"
+  expected_cluster: 12
+
+# --- Cluster 13: ML/AI domain ---
+- id: q46
+  query: "ed25519 signature length"
+  lens: "domain"
+  expected_cluster: 13
+- id: q47
+  query: "cosine similarity range"
+  lens: "domain"
+  expected_cluster: 13
+- id: q48
+  query: "when was BERT released"
+  lens: "domain"
+  expected_cluster: 13
+
+# --- Cluster 14: episodic project events ---
+- id: q49
+  query: "what was the first MVP demo draft"
+  lens: "auto"
+  expected_cluster: 14
+- id: q50
+  query: "why did we leave Gemma-4"
+  lens: "auto"
+  expected_cluster: 14

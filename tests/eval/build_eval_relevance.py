@@ -117,6 +117,18 @@ async def main() -> int:
     try:
         labels: list[dict] = []
         for q in queries:
+            # Adversarial queries have known-empty ground truth by construction.
+            # Skip the LLM call so we don't spend quota AND so the labeler
+            # doesn't invent matches.
+            if q.get("adversarial"):
+                print(f"skipping {q['id']} (adversarial → relevant_ids=[])", flush=True)
+                labels.append({
+                    "query_id": q["id"],
+                    "query": q["query"],
+                    "lens": q["lens"],
+                    "relevant_ids": [],
+                })
+                continue
             print(f"labeling {q['id']}: {q['query']!r} ...", flush=True)
             relevant = await _label_one_query(backend, q, neurons)
             print(f"  → {len(relevant)} relevant: {relevant}")

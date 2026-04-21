@@ -154,3 +154,279 @@
   counterparty_id: null
   tier: semantic
   kind: domain_fact
+
+# --- Cluster 7: travel / Sri Lanka places (counterparty 5 — travel companion) ---
+- id: n031
+  content: "Kandy hosts the Esala Perahera every summer."
+  counterparty_id: 5
+  tier: semantic
+- id: n032
+  content: "The Sigiriya rock fortress was built by King Kashyapa."
+  counterparty_id: 5
+  tier: semantic
+- id: n033
+  content: "Train rides between Kandy and Ella are a tourist favourite."
+  counterparty_id: 5
+  tier: semantic
+- id: n034
+  content: "Galle Fort is a UNESCO world heritage site."
+  counterparty_id: 5
+  tier: semantic
+- id: n035
+  content: "The southern beaches are popular for surfing from December to March."
+  counterparty_id: 5
+  tier: semantic
+- id: n036
+  content: "Yala National Park has one of the highest leopard densities in the world."
+  counterparty_id: 5
+  tier: semantic
+- id: n037
+  content: "Colombo is Sri Lanka's commercial capital."
+  counterparty_id: 5
+  tier: semantic
+- id: n038
+  content: "Nuwara Eliya sits at 1868m elevation and grows famous Ceylon tea."
+  counterparty_id: 5
+  tier: semantic
+- id: n039
+  content: "Anuradhapura was the first capital of ancient Sri Lanka."
+  counterparty_id: 5
+  tier: semantic
+- id: n040
+  content: "The Temple of the Tooth in Kandy houses a relic of the Buddha."
+  counterparty_id: 5
+  tier: semantic
+
+# --- Cluster 8: work / projects / memory-engine itself (counterparty 6) ---
+- id: n041
+  content: "Memory-engine uses BM25Plus for lexical retrieval on small corpora."
+  counterparty_id: 6
+  tier: semantic
+- id: n042
+  content: "The consolidator runs every 60 seconds by default."
+  counterparty_id: 6
+  tier: semantic
+- id: n043
+  content: "Phase 7 is the first-internal-user phase of the blueprint."
+  counterparty_id: 6
+  tier: semantic
+- id: n044
+  content: "The grounding gate uses per-event max similarity at threshold 0.60."
+  counterparty_id: 6
+  tier: semantic
+- id: n045
+  content: "We use named docker volumes to dodge macOS bind-mount SQLite issues."
+  counterparty_id: 6
+  tier: semantic
+- id: n046
+  content: "MRR@10 on the frozen eval corpus is 0.975."
+  counterparty_id: 6
+  tier: semantic
+- id: n047
+  content: "Twin-agent polls whatsapp-bridge every 3 seconds by default."
+  counterparty_id: 6
+  tier: semantic
+- id: n048
+  content: "The extractor model is gemini-2.5-flash via Google AI Studio."
+  counterparty_id: 6
+  tier: semantic
+- id: n049
+  content: "OPERATOR_BACKOFF_MINUTES suppresses drafts when the operator recently replied directly."
+  counterparty_id: 6
+  tier: semantic
+- id: n050
+  content: "Retrieval fuses BM25Plus + vector + graph signals via reciprocal rank fusion."
+  counterparty_id: 6
+  tier: semantic
+
+# --- Cluster 9: food / Sri Lankan cuisine (counterparty 7) ---
+- id: n051
+  content: "Pol sambol is made from scraped coconut, chili, and lime."
+  counterparty_id: 7
+  tier: semantic
+- id: n052
+  content: "Kiribath is rice cooked in coconut milk and served on auspicious occasions."
+  counterparty_id: 7
+  tier: semantic
+- id: n053
+  content: "Hoppers are bowl-shaped pancakes made from fermented rice batter."
+  counterparty_id: 7
+  tier: semantic
+- id: n054
+  content: "Kottu is a popular Sri Lankan street food made from chopped roti and vegetables."
+  counterparty_id: 7
+  tier: semantic
+- id: n055
+  content: "Lamprais is a colonial-era Dutch-influenced rice parcel wrapped in banana leaf."
+  counterparty_id: 7
+  tier: semantic
+- id: n056
+  content: "Seeni sambol is a sweet-and-spicy caramelised onion relish."
+  counterparty_id: 7
+  tier: semantic
+- id: n057
+  content: "Watalappam is a cardamom-flavoured coconut custard dessert."
+  counterparty_id: 7
+  tier: semantic
+- id: n058
+  content: "Parippu is a yellow dal commonly served with rice."
+  counterparty_id: 7
+  tier: semantic
+- id: n059
+  content: "Mallung is a tempered vegetable side dish often made with gotu kola."
+  counterparty_id: 7
+  tier: semantic
+- id: n060
+  content: "Curry leaves (karapincha) are a staple aromatic in Sri Lankan cooking."
+  counterparty_id: 7
+  tier: semantic
+
+# --- Cluster 10: more domain facts / systems ---
+- id: n061
+  content: "RRF fusion combines ranked lists using reciprocal rank weights."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n062
+  content: "sqlite-vec is a C extension adding vector search to SQLite."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n063
+  content: "FastAPI uses Pydantic for request validation and response shaping."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n064
+  content: "NDCG weights relevance hits by log-position to reward high-ranked matches."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n065
+  content: "Whatsmeow is a Go library implementing the WhatsApp multi-device protocol."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n066
+  content: "Xet is HuggingFace's content-addressable storage for large model weights."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n067
+  content: "Docker named volumes live inside the Linux VM on macOS Desktop."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n068
+  content: "Uvicorn is an ASGI server based on uvloop and httptools."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n069
+  content: "Pynacl wraps libsodium for Python cryptography."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n070
+  content: "TOML is the configuration format used by pyproject.toml."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+
+# --- Cluster 11: additional self_facts ---
+- id: n071
+  content: "I drink coffee in the morning and tea in the afternoon."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+- id: n072
+  content: "I read fiction on weekends."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+- id: n073
+  content: "I'm learning to play the guitar."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+- id: n074
+  content: "I try to cycle once a week when the weather permits."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+- id: n075
+  content: "I grew up in Colombo."
+  counterparty_id: null
+  tier: semantic
+  kind: self_fact
+
+# --- Cluster 12: additional counterparty facts (spouse — cluster 2 extended) ---
+- id: n076
+  content: "Babi went to university in Moratuwa."
+  counterparty_id: 2
+  tier: working
+- id: n077
+  content: "Babi enjoys baking on Sundays."
+  counterparty_id: 2
+  tier: working
+- id: n078
+  content: "Babi is allergic to prawns."
+  counterparty_id: 2
+  tier: working
+- id: n079
+  content: "Babi's favourite band is Coldplay."
+  counterparty_id: 2
+  tier: working
+- id: n080
+  content: "Babi and I adopted a cat last year."
+  counterparty_id: 2
+  tier: working
+
+# --- Cluster 13: misc domain (AI/ML) ---
+- id: n081
+  content: "Ed25519 signatures are 64 bytes long."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n082
+  content: "Cosine similarity ranges from -1 to 1 for unit vectors."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n083
+  content: "Transformers use self-attention to model token relationships."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n084
+  content: "BERT was released by Google in 2018."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+- id: n085
+  content: "Quantised models trade a small accuracy drop for faster inference."
+  counterparty_id: null
+  tier: semantic
+  kind: domain_fact
+
+# --- Cluster 14: recent project events / episodic-ish ---
+- id: n086
+  content: "The consolidator corruption on 2026-04-19 was recovered via sqlite3 .recover."
+  counterparty_id: 6
+  tier: episodic
+- id: n087
+  content: "The first MVP demo reply was 'I am at work, babi. What is up?' on 2026-04-19."
+  counterparty_id: 6
+  tier: episodic
+- id: n088
+  content: "We switched from Gemma-4-31b to gemini-2.5-flash after HTTP 499 upstream timeouts."
+  counterparty_id: 6
+  tier: episodic
+- id: n089
+  content: "P1 #4 eval baseline was captured on 2026-04-20 with MRR@10 of 0.975."
+  counterparty_id: 6
+  tier: episodic
+- id: n090
+  content: "Threshold 0.60 was chosen after a threshold sweep on 50 fixtures."
+  counterparty_id: 6
+  tier: episodic

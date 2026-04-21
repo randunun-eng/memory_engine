@@ -108,6 +108,32 @@ async def _list_personas(conn: Any) -> list[int]:
     return [int(r["id"]) for r in rows]
 
 
+async def _resolve_persona_public_key(
+    conn: Any, persona_id: int, fallback: str,
+) -> str:
+    """Return the per-persona owner_public_key from the DB, falling back
+    to the provided default (historically the shared env key).
+
+    Added by migration 008. NULL column means "no per-persona key set" —
+    use the fallback. Once operators start populating the column via
+    POST /v1/personas or a future /v1/identity/load signature flow,
+    the fallback stops being exercised. See DRIFT
+    `consolidator-ai-studio-shared-key`.
+    """
+    try:
+        cursor = await conn.execute(
+            "SELECT owner_public_key FROM personas WHERE id = ?",
+            (persona_id,),
+        )
+        row = await cursor.fetchone()
+    except Exception:
+        return fallback
+    if row is None:
+        return fallback
+    key = row["owner_public_key"]
+    return str(key) if key else fallback
+
+
 async def _update_lag_gauge(conn: Any, persona_id: int) -> None:
     cursor = await conn.execute(
         """
@@ -206,12 +232,17 @@ async def _consolidation_loop(
                 personas = await _list_personas(conn)
                 for persona_id in personas:
                     t0 = time.monotonic()
+                    # Per-persona owner public key (migration 008) — falls
+                    # back to the env-provided key when column is NULL.
+                    persona_pub = await _resolve_persona_public_key(
+                        conn, persona_id, public_key_b64,
+                    )
                     stats = await consolidation_pass(
                         conn,
                         dispatch,
                         persona_id,
                         private_key,
-                        public_key_b64,
+                        persona_pub,
                         embedder_rev=_EMBEDDER_REV,
                         embed_fn=embed_fn,
                         similarity_threshold=similarity_threshold,
