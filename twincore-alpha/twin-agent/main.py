@@ -281,6 +281,7 @@ HELP_TEXT = (
     "/approve N                      — send draft #N\n"
     "/reject N                       — discard draft #N\n"
     "/edit N <text>                  — send draft #N with your text\n"
+    "/followup N <text>              — send <text> as a NEW message in #N's chat (doesn't edit the original send)\n"
     "/contact <ref> <relation> <name> — classify a contact\n"
     "   relations: spouse, partner, family, friend, acquaintance, business\n"
     "   ref: phone or LID, e.g. +94771234567 or 9876543210@lid\n"
@@ -378,6 +379,37 @@ async def handle_command(
                 await send_self_chat(client, f"✏ #{draft_id} edited + sent")
         except Exception as e:
             await send_self_chat(client, f"✗ #{draft_id} edit error: {str(e)[:120]}")
+        return
+
+    if verb == "/followup":
+        # /followup N <text> — send a new message to the same chat as
+        # draft #N without touching the original send. Use case:
+        # typo/correction after /approve or /edit has already sent.
+        if len(parts) < 3:
+            await send_self_chat(client, "? /followup N <text>")
+            return
+        try:
+            draft_id = int(parts[1])
+        except ValueError:
+            await send_self_chat(client, f"? Not a number: {parts[1]}")
+            return
+        new_text = parts[2]
+        try:
+            r = await client.post(
+                f"{CONTROL_PLANE_URL}/drafts/{draft_id}/followup",
+                json={"new_text": new_text},
+                headers={"Content-Type": "application/json; charset=utf-8"},
+                timeout=30.0,
+            )
+            if r.status_code >= 400:
+                await send_self_chat(
+                    client,
+                    f"✗ #{draft_id} followup failed: {r.status_code} {r.text[:120]}",
+                )
+            else:
+                await send_self_chat(client, f"↪ #{draft_id} followup sent")
+        except Exception as e:
+            await send_self_chat(client, f"✗ #{draft_id} followup error: {str(e)[:120]}")
         return
 
     if verb == "/contact":
@@ -622,10 +654,40 @@ async def fetch_contact_profile(
         return None
 
 
+# Score thresholds for filtering recall results before they hit the prompt.
+# Without these, retrieval always returns top_k regardless of relevance —
+# adversarial queries (e.g. "weather forecast") surface fixture neurons
+# with fused~0.016 (RRF floor) that pollute the prompt with junk context.
+# See DRIFT `retrieval-baseline-p1-4` (adversarial section) and
+# `twin-agent-recall-score-threshold`.
+#
+# Defaults tuned against the eval fixture: strong hits score fused>=0.02
+# AND (bm25>=2.0 OR vector>=0.3). Tune via env if production shows drift.
+RECALL_MIN_FUSED = float(os.environ.get("RECALL_MIN_FUSED", "0.02"))
+RECALL_MIN_BM25 = float(os.environ.get("RECALL_MIN_BM25", "2.0"))
+RECALL_MIN_VECTOR = float(os.environ.get("RECALL_MIN_VECTOR", "0.3"))
+
+
+def _passes_score_threshold(result: dict) -> bool:
+    """Keep a result if fused is above floor AND at least one signal is strong."""
+    scores = result.get("scores") or {}
+    fused = float(scores.get("fused") or 0.0)
+    bm25 = float(scores.get("bm25") or 0.0)
+    vector = float(scores.get("vector") or 0.0)
+    if fused < RECALL_MIN_FUSED:
+        return False
+    return bm25 >= RECALL_MIN_BM25 or vector >= RECALL_MIN_VECTOR
+
+
 async def recall_context(
     client: httpx.AsyncClient, query: str, counterparty: str
 ) -> list[dict]:
-    """Query memory_engine for relevant neurons under counterparty lens."""
+    """Query memory_engine for relevant neurons under counterparty lens.
+
+    Raw results are score-thresholded before returning (see
+    _passes_score_threshold). Drops adversarial / low-confidence recall
+    rather than letting it pollute the prompt. Dropped-count is logged.
+    """
     try:
         r = await client.post(
             f"{MEMORY_ENGINE_URL}/v1/recall",
@@ -633,7 +695,7 @@ async def recall_context(
                 "persona_slug": PERSONA_SLUG,
                 "query": query,
                 "lens": f"counterparty:{counterparty}",
-                "top_k": 5,
+                "top_k": 8,  # fetch more, drop weak, keep top ~5 strong
             },
             headers={"Content-Type": "application/json; charset=utf-8"},
             timeout=10.0,
@@ -642,7 +704,15 @@ async def recall_context(
             log.error("Recall failed status=%d body=%s", r.status_code, r.text[:200])
             return []
         data = r.json()
-        return data.get("neurons", []) or data.get("results", []) or []
+        raw_results = data.get("neurons", []) or data.get("results", []) or []
+        kept = [r for r in raw_results if _passes_score_threshold(r)][:5]
+        dropped = len(raw_results) - len(kept)
+        if dropped > 0:
+            log.info(
+                "recall thresholded: kept=%d dropped=%d (fused>=%.3f and (bm25>=%.1f or vector>=%.2f))",
+                len(kept), dropped, RECALL_MIN_FUSED, RECALL_MIN_BM25, RECALL_MIN_VECTOR,
+            )
+        return kept
     except Exception as e:
         log.exception("Recall error: %s", e)
         return []
@@ -1009,8 +1079,33 @@ async def main_loop() -> None:
     identity = load_identity()
     log.info("Loaded identity: %s", identity.get("role", {}).get("title", "?"))
 
+    # Sync fetches run in a thread pool with a timeout so a stuck bridge DB
+    # read (WAL contention, corrupt page, locked file on macOS Docker bind)
+    # does NOT freeze the entire async loop. Default 15s covers a cold-start
+    # fetch of 50 rows; real-time steady-state is sub-100ms.
+    FETCH_TIMEOUT_SEC = float(os.environ.get("FETCH_TIMEOUT_SEC", "15"))
+
+    async def _fetch_messages_bounded(ts: str) -> list[IncomingMessage]:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fetch_new_messages, ts),
+            timeout=FETCH_TIMEOUT_SEC,
+        )
+
+    async def _fetch_self_messages_bounded(ts: str) -> list[SelfMessage]:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fetch_new_self_messages, ts),
+            timeout=FETCH_TIMEOUT_SEC,
+        )
+
+    tick = 0
+
     async with httpx.AsyncClient() as client:
         while True:
+            tick += 1
+            # Heartbeat every 20 ticks (~60s at POLL_INTERVAL=3) so silent
+            # stalls become visible in the log without spamming.
+            if tick % 20 == 1:
+                log.info("poll tick=%d (last_ts=%s)", tick, read_checkpoint())
             try:
                 if is_paused():
                     log.info("Paused (file exists). Skipping poll.")
@@ -1019,7 +1114,15 @@ async def main_loop() -> None:
 
                 # --- Branch 1: conversational messages from contacts ---
                 last_ts = read_checkpoint()
-                messages = fetch_new_messages(last_ts)
+                try:
+                    messages = await _fetch_messages_bounded(last_ts)
+                except asyncio.TimeoutError:
+                    log.error("fetch_new_messages timed out after %.1fs; skipping tick",
+                              FETCH_TIMEOUT_SEC)
+                    messages = []
+                except Exception as e:
+                    log.exception("fetch_new_messages failed: %s", e)
+                    messages = []
 
                 if messages:
                     log.info("Fetched %d new messages (since ts=%s)",
@@ -1045,7 +1148,15 @@ async def main_loop() -> None:
                 # they don't get re-scanned.
                 if OWN_JIDS:
                     last_cmd_ts = read_command_checkpoint()
-                    self_msgs = fetch_new_self_messages(last_cmd_ts)
+                    try:
+                        self_msgs = await _fetch_self_messages_bounded(last_cmd_ts)
+                    except asyncio.TimeoutError:
+                        log.error("fetch_new_self_messages timed out after %.1fs; skipping",
+                                  FETCH_TIMEOUT_SEC)
+                        self_msgs = []
+                    except Exception as e:
+                        log.exception("fetch_new_self_messages failed: %s", e)
+                        self_msgs = []
                     if self_msgs:
                         n_cmds = sum(1 for m in self_msgs if m.content.strip().startswith('/'))
                         log.info("Fetched %d self-chat messages (%d commands)",
