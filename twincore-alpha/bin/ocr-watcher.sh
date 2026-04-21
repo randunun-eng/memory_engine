@@ -37,10 +37,12 @@ else
   exit 1
 fi
 
-# Host URLs — launchd runs outside the container network, so use
-# 127.0.0.1 not the docker-compose service names.
-export MEMORY_ENGINE_URL="${MEMORY_ENGINE_URL:-http://127.0.0.1:4000}"
-export WHATSAPP_BRIDGE_URL="${WHATSAPP_BRIDGE_URL:-http://127.0.0.1:8080}"
+# Host URLs — launchd runs outside the container network, so always use
+# 127.0.0.1 (the docker-compose port mappings) regardless of what .env says.
+# .env ships with internal docker DNS names (`memory-engine:4000`) meant
+# for container-to-container traffic; those fail to resolve from the host.
+export MEMORY_ENGINE_URL="http://127.0.0.1:4000"
+export WHATSAPP_BRIDGE_URL="http://127.0.0.1:8080"
 
 # Use the scaffolding repo's uv venv (has all deps + script).
 SCAFFOLD_DIR="${HOME}/Memory_engine/files/memory_engine_scaffolding"

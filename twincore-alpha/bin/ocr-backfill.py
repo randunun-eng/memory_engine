@@ -156,8 +156,16 @@ def ocr_with_gemini(client: httpx.Client, img_path: Path) -> str | None:
 
 
 def _compute_content_hash(payload: dict) -> str:
-    """Mirror memory_engine.core.events.compute_content_hash."""
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    """Mirror memory_engine.core.events.compute_content_hash.
+
+    ensure_ascii=False is CRITICAL — server-side hash preserves UTF-8
+    characters (Sinhala script, emoji, etc.). Without this, Sinhala
+    payloads produced different hashes client-side vs server-side and
+    signature verification failed silently.
+    """
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
