@@ -293,6 +293,146 @@ async def test_grounding_accuracy_current_stack(db) -> None:
     )
 
 
+async def test_grounding_full_pipeline_with_judge(db) -> None:
+    """Re-measurement with LLM judge layered on top of similarity gate.
+
+    Current-stack test measured the EMBEDDING signal only (threshold 0.60,
+    LLM judge disabled). Production path runs the LLM judge for
+    semantic/procedural tier candidates. This test measures the full
+    pipeline to see how much precision the judge adds.
+
+    Forces target_tier=semantic so the judge fires for every fixture.
+    Uses a real Gemini-2.5-flash backend via PolicyDispatch (requires
+    GEMINI_API_KEY env; skipped otherwise).
+
+    Records: accuracy, precision, recall, and how many fixtures were
+    flipped (similarity accepted → judge rejected) vs left untouched.
+    """
+    import os
+
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        pytest.skip("GEMINI_API_KEY not set — skipping full-pipeline grounding test")
+
+    from sentence_transformers import SentenceTransformer
+
+    from memory_engine.policy.backends.google_ai_studio import GoogleAIStudioBackend
+    from memory_engine.policy.cache import PromptCache
+    from memory_engine.policy.dispatch import PolicyDispatch
+    from memory_engine.policy.registry import PromptRegistry
+
+    persona = await make_test_persona(db)
+    fixtures = _load_fixtures()
+
+    model = SentenceTransformer(
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
+
+    def embed_fn(text: str) -> list[float]:
+        vec = model.encode(text, normalize_embeddings=True)
+        return vec.tolist() if hasattr(vec, "tolist") else list(vec)
+
+    registry = PromptRegistry()
+    registry.load_from_directory()
+    cache = PromptCache()
+    backend = GoogleAIStudioBackend(api_key=api_key, max_rpm=10, warn_rpm=8)
+    dispatch = PolicyDispatch(
+        registry=registry, llm_backend=backend, cache=cache, model="gemini-2.5-flash",
+    )
+
+    results = {
+        "true_positive": 0,
+        "true_negative": 0,
+        "false_positive": 0,
+        "false_negative": 0,
+    }
+    judge_flipped_to_reject = 0
+
+    from memory_engine.core.events import append_event
+
+    try:
+        for i, fixture in enumerate(fixtures):
+            payload = {"text": fixture["event_text"]}
+            content_hash = compute_content_hash(payload)
+            sig = sign(persona.private_key, canonical_signing_message(persona.id, content_hash))
+            event = await append_event(
+                db, persona_id=persona.id, counterparty_id=None,
+                event_type="message_in", scope="private", payload=payload,
+                signature=sig, public_key_b64=persona.public_key_b64,
+            )
+
+            # Force target_tier=semantic so the LLM judge activates.
+            candidate = NeuronCandidate(
+                content=fixture["candidate"],
+                confidence=0.9,
+                source_event_ids=[event.id],
+                t_valid_start=None,
+                source_span=None,
+                target_tier="semantic",
+            )
+
+            # First: similarity-only (what our prior test measured)
+            sim_only = await grounding_gate(
+                candidate, events=[event], conn=db, persona_id=persona.id,
+                embed_fn=embed_fn, similarity_threshold=0.60,
+                llm_judge_tiers=[],
+            )
+            sim_accepted = sim_only.verdict == Verdict.ACCEPT
+
+            # Second: full pipeline (similarity + judge)
+            full = await grounding_gate(
+                candidate, events=[event], conn=db, persona_id=persona.id,
+                dispatch=dispatch, embed_fn=embed_fn, similarity_threshold=0.60,
+                llm_judge_tiers=["semantic", "procedural"],
+            )
+            full_accepted = full.verdict == Verdict.ACCEPT
+
+            if sim_accepted and not full_accepted:
+                judge_flipped_to_reject += 1
+
+            expected = fixture["grounded"]
+            if expected and full_accepted:
+                results["true_positive"] += 1
+            elif not expected and not full_accepted:
+                results["true_negative"] += 1
+            elif not expected and full_accepted:
+                results["false_positive"] += 1
+            elif expected and not full_accepted:
+                results["false_negative"] += 1
+
+            if (i + 1) % 10 == 0:
+                print(f"  ...{i + 1}/{len(fixtures)} done")
+
+    finally:
+        await backend.aclose()
+
+    total = sum(results.values())
+    accuracy = (results["true_positive"] + results["true_negative"]) / total
+    tp_fp = results["true_positive"] + results["false_positive"]
+    precision = results["true_positive"] / tp_fp if tp_fp else 0.0
+    tp_fn = results["true_positive"] + results["false_negative"]
+    recall = results["true_positive"] / tp_fn if tp_fn else 0.0
+
+    print(f"\n{'=' * 60}")
+    print("GROUNDING GATE — FULL PIPELINE (similarity + LLM judge)")
+    print("  embedder:  paraphrase-multilingual-MiniLM-L12-v2")
+    print("  threshold: 0.60 (embedding)")
+    print("  judge:     gemini-2.5-flash (tier=semantic)")
+    print(f"{'=' * 60}")
+    print(f"Accuracy:  {accuracy:.1%} ({results['true_positive'] + results['true_negative']}/{total})")
+    print(f"Precision: {precision:.1%}")
+    print(f"Recall:    {recall:.1%}")
+    print(f"Judge flipped {judge_flipped_to_reject} similarity-accepts → rejects")
+    print(f"TP={results['true_positive']} TN={results['true_negative']} "
+          f"FP={results['false_positive']} FN={results['false_negative']}")
+    print(f"{'=' * 60}")
+    print(f"Similarity-only baseline (from test_grounding_accuracy_current_stack):")
+    print(f"  60% @ threshold 0.25, 88% @ threshold 0.60")
+    print(f"{'=' * 60}")
+
+    assert accuracy >= 0.50, f"Full-pipeline accuracy {accuracy:.1%} below 50%"
+
+
 async def test_grounding_threshold_sweep(db) -> None:
     """Find the optimal similarity threshold for the current embedder.
 
