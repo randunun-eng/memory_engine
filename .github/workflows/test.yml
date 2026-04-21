@@ -29,14 +29,11 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install sqlite-vec
-        run: |
-          # sqlite-vec ships as a loadable extension. Install via pip so the
-          # test harness can locate it. Production deployments may prefer the
-          # prebuilt .so from https://github.com/asg017/sqlite-vec/releases.
-          uv pip install --system sqlite-vec
-
       - name: Sync dependencies
+        # sqlite-vec is declared in pyproject.toml as a runtime dep and
+        # installed into uv's managed venv via uv sync. The previous
+        # standalone `uv pip install --system sqlite-vec` step broke on
+        # Ubuntu 24.04's PEP-668 "externally managed" system Python.
         run: uv sync --all-extras
 
       - name: Ruff lint
