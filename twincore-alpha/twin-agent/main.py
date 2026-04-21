@@ -516,13 +516,17 @@ def fetch_new_messages(since_ts_iso: str) -> list[IncomingMessage]:
     conn.row_factory = sqlite3.Row
 
     try:
+        # Fetch BOTH directions — inbound (is_from_me=0) AND the operator's
+        # outbound (is_from_me=1). The outbound messages are what lets
+        # memory_engine serve voice_samples and per-chat thread context.
+        # Process-message filters on is_from_me downstream (outbound skips
+        # draft generation; only inbound produces drafts).
         cur = conn.execute(
             """
             SELECT id, chat_jid, sender, content, timestamp, is_from_me,
                    CASE WHEN chat_jid LIKE '%@g.us' THEN 1 ELSE 0 END AS is_group
               FROM messages
              WHERE timestamp > ?
-               AND is_from_me = 0
                AND COALESCE(content, '') != ''
              ORDER BY timestamp ASC
              LIMIT 50
@@ -592,7 +596,9 @@ def sign_event(persona_id: int, content_hash: str) -> str:
 
 
 async def ingest_message(client: httpx.AsyncClient, msg: IncomingMessage) -> None:
-    """POST signed event to memory_engine."""
+    """POST signed event to memory_engine. Event type reflects direction:
+    outbound operator replies become message_out so chat_context can
+    surface them as voice_samples."""
     counterparty = canonicalize_counterparty(msg)
     payload = {
         "text": msg.content,
@@ -602,11 +608,12 @@ async def ingest_message(client: httpx.AsyncClient, msg: IncomingMessage) -> Non
     }
     content_hash = canonical_hash(payload)
     signature = sign_event(PERSONA_ID, content_hash)
+    event_type = "message_out" if msg.is_from_me else "message_in"
 
     body = {
         "persona_slug": PERSONA_SLUG,
         "counterparty_external_ref": counterparty,
-        "event_type": "message_in",
+        "event_type": event_type,
         "scope": "private",
         "payload": payload,
         "signature": signature,
@@ -1119,6 +1126,14 @@ async def process_message(
         return
 
     counterparty = canonicalize_counterparty(msg)
+
+    # Outbound (operator's own replies) — ingest for voice_samples /
+    # thread context, but never draft a reply to it. Short-circuit.
+    if msg.is_from_me:
+        log.debug("Outbound msg=%s ingest-only (voice sample)", msg.id)
+        await ingest_message(client, msg)
+        return
+
     log.info("Processing msg=%s from=%s content=%r",
              msg.id, counterparty, msg.content[:80])
 
