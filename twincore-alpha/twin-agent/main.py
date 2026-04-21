@@ -679,6 +679,89 @@ def _passes_score_threshold(result: dict) -> bool:
     return bm25 >= RECALL_MIN_BM25 or vector >= RECALL_MIN_VECTOR
 
 
+def fetch_recent_thread(chat_jid: str, limit: int = 20) -> list[dict]:
+    """Read the last `limit` messages with this chat from the bridge DB,
+    oldest first. Used to give Gemini the actual conversation context
+    it needs to produce a coherent next-turn reply.
+
+    Without this, the twin is answering an isolated inbound like someone
+    joining a conversation halfway through — producing drafts that sound
+    right in isolation but disconnected from the flow (the 'wake up from
+    a dream' feel the operator flagged on 2026-04-21).
+
+    Returns entries shaped like:
+      {"role": "contact" | "me", "text": str, "ts": str, "media": bool}
+
+    Multi-line content is preserved. Media with no OCR is labeled
+    [media:<type>]. If the contact has an outbound LID separate from
+    their inbound phone JID (WhatsApp's device-linked ID quirk), pass
+    both JIDs in the caller.
+    """
+    if not Path(WHATSAPP_BRIDGE_DB_PATH).exists():
+        return []
+    conn = sqlite3.connect(f"file:{WHATSAPP_BRIDGE_DB_PATH}?mode=ro", uri=True)
+    conn.text_factory = lambda b: b.decode("utf-8", errors="replace")
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT content, timestamp, is_from_me, media_type
+            FROM messages
+            WHERE chat_jid = ?
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (chat_jid, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+    out: list[dict] = []
+    for row in reversed(rows):  # chronological oldest-first for prompt
+        text = row["content"] or ""
+        media = bool(row["media_type"])
+        if not text and media:
+            text = f"[media:{row['media_type']}]"
+        elif not text:
+            continue  # skip truly empty rows
+        out.append({
+            "role": "me" if row["is_from_me"] else "contact",
+            "text": text,
+            "ts": str(row["timestamp"]),
+            "media": media,
+        })
+    return out
+
+
+def fetch_recent_operator_replies(
+    chat_jid: str, limit: int = 15
+) -> list[str]:
+    """Last N messages the operator actually sent to this chat — used
+    to anchor the draft's voice/length/register to the operator's real
+    style with THIS specific contact. Returns a simple list of the
+    message texts, oldest-first."""
+    if not Path(WHATSAPP_BRIDGE_DB_PATH).exists():
+        return []
+    conn = sqlite3.connect(f"file:{WHATSAPP_BRIDGE_DB_PATH}?mode=ro", uri=True)
+    conn.text_factory = lambda b: b.decode("utf-8", errors="replace")
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT content
+            FROM messages
+            WHERE chat_jid = ?
+              AND is_from_me = 1
+              AND COALESCE(content, '') != ''
+            ORDER BY timestamp DESC
+            LIMIT ?
+            """,
+            (chat_jid, limit),
+        ).fetchall()
+    finally:
+        conn.close()
+    return [r["content"] for r in reversed(rows)]
+
+
 async def recall_context(
     client: httpx.AsyncClient, query: str, counterparty: str
 ) -> list[dict]:
@@ -722,6 +805,36 @@ async def recall_context(
 
 # α.2 Per-contact relationship → tone guidance. Injected into the system
 # prompt when a contact profile exists for the counterparty.
+def _format_thread(thread: list[dict] | None) -> str:
+    """Render recent-thread messages as 'YOU: ...' / 'THEM: ...' lines
+    trimmed to 180 chars each. Gives the model the conversation flow
+    without blowing the context budget."""
+    if not thread:
+        return "(no recent messages available)"
+    lines: list[str] = []
+    for m in thread:
+        who = "YOU" if m["role"] == "me" else "THEM"
+        t = m["text"].replace("\n", " ").strip()
+        if len(t) > 180:
+            t = t[:177] + "..."
+        lines.append(f"{who}: {t}")
+    return "\n".join(lines)
+
+
+def _format_voice_samples(samples: list[str] | None) -> str:
+    """Show the operator's last N replies verbatim so the model can
+    copy length / tone / Singlish density. No commentary, just samples."""
+    if not samples:
+        return "(no recent replies to this contact)"
+    rendered: list[str] = []
+    for s in samples:
+        t = s.replace("\n", " ").strip()
+        if len(t) > 200:
+            t = t[:197] + "..."
+        rendered.append(f"- {t}")
+    return "\n".join(rendered)
+
+
 RELATIONSHIP_TONES: dict[str, str] = {
     "spouse":       "Your partner/spouse. Warm, direct, playful. Use terms of endearment naturally (babi, etc.). Commit freely — scheduling, plans, casual arrangements are fine to decide directly. Do NOT say 'let me check'; you are allowed to commit to this person.",
     "partner":      "Your partner. Warm, direct, playful. Use terms of endearment naturally. Commit freely — scheduling, plans, casual arrangements are fine to decide directly. Do NOT say 'let me check'; you are allowed to commit to this person.",
@@ -737,6 +850,8 @@ def build_system_prompt(
     context: list[dict],
     counterparty: str,
     contact_profile: dict | None = None,
+    recent_thread: list[dict] | None = None,
+    voice_samples: list[str] | None = None,
 ) -> str:
     """Construct the system prompt for Gemini.
 
@@ -795,7 +910,13 @@ Emoji: {emoji_hint}.
 
 {contact_block}
 
-Relevant memory about prior conversations with this person:
+RECENT CONVERSATION with this person (chronological; YOU = me, THEM = them):
+{_format_thread(recent_thread)}
+
+HOW I ACTUALLY TALK TO THIS PERSON (my recent messages — match this style, length, and register):
+{_format_voice_samples(voice_samples)}
+
+Longer-term memory about prior conversations with this person:
 {context_block}
 
 Non-negotiables (hard rules you must follow):
@@ -1032,11 +1153,28 @@ async def process_message(
         )
         return
 
-    # 3. Recall context
+    # 3. Recall context (long-term memory)
     context = await recall_context(client, msg.content, counterparty)
     log.info("Recalled %d context neurons for msg=%s", len(context), msg.id)
 
-    # 3b. Look up per-contact profile (α.2). None if not classified.
+    # 3a. Recent thread (short-term, in-the-moment conversation flow).
+    # Without this, drafts sound like they were written by someone who
+    # just walked into the conversation — the 'wake up from a dream'
+    # feel the operator flagged. Pulling last 20 messages from the
+    # bridge keeps the model grounded in what's actually being discussed.
+    recent_thread = await asyncio.to_thread(fetch_recent_thread, msg.chat_jid, 20)
+    # 3b. Voice samples — operator's actual recent replies to this chat.
+    # Used to anchor style/length; the twin writes 20 words where the
+    # operator writes 2. Voice samples fix that.
+    voice_samples = await asyncio.to_thread(
+        fetch_recent_operator_replies, msg.chat_jid, 15
+    )
+    log.info(
+        "thread=%d messages, voice_samples=%d replies",
+        len(recent_thread), len(voice_samples),
+    )
+
+    # 3c. Look up per-contact profile (α.2). None if not classified.
     profile = await fetch_contact_profile(client, counterparty)
     if profile:
         log.info(
@@ -1047,7 +1185,14 @@ async def process_message(
         )
 
     # 4. Build prompt + call LLM
-    system_prompt = build_system_prompt(identity, context, counterparty, profile)
+    system_prompt = build_system_prompt(
+        identity,
+        context,
+        counterparty,
+        profile,
+        recent_thread=recent_thread,
+        voice_samples=voice_samples,
+    )
     draft_text = await call_gemini(client, system_prompt, msg.content)
     if not draft_text:
         log.warning("No draft produced for msg=%s (LLM failure)", msg.id)
