@@ -49,7 +49,17 @@ MetricKind = Literal["counter", "gauge", "histogram"]
 
 # Default histogram buckets (seconds) — covers sub-ms to 10s.
 DEFAULT_BUCKETS: tuple[float, ...] = (
-    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
 )
 
 
@@ -165,7 +175,11 @@ class Registry:
         buckets: tuple[float, ...] = DEFAULT_BUCKETS,
     ) -> _HistogramSeries:
         return self._get_or_create(  # type: ignore[return-value]
-            name, "histogram", labels, help_text=help_text, buckets=buckets,
+            name,
+            "histogram",
+            labels,
+            help_text=help_text,
+            buckets=buckets,
         )
 
     def _get_or_create(
@@ -180,7 +194,10 @@ class Registry:
         with self._lock:
             if name not in self._metrics:
                 self._metrics[name] = _Metric(
-                    name=name, kind=kind, help_text=help_text, buckets=buckets,
+                    name=name,
+                    kind=kind,
+                    help_text=help_text,
+                    buckets=buckets,
                 )
             metric = self._metrics[name]
             if metric.kind != kind:

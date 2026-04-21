@@ -24,6 +24,7 @@ import pytest
 
 # ---- Schema ------------------------------------------------------------
 
+
 async def test_schema_applies_clean(db) -> None:
     """All Phase 0 tables exist after migrations run."""
     from memory_engine.db.migrations import migration_status
@@ -42,9 +43,7 @@ async def test_schema_applies_clean(db) -> None:
         assert row is not None, f"Table {table} missing"
 
     # Virtual table shows up in sqlite_master with type='table' too
-    cursor = await db.execute(
-        "SELECT name FROM sqlite_master WHERE name='neurons_vec'"
-    )
+    cursor = await db.execute("SELECT name FROM sqlite_master WHERE name='neurons_vec'")
     assert await cursor.fetchone() is not None, "neurons_vec virtual table missing"
 
 
@@ -61,6 +60,7 @@ async def test_schema_migrations_tracks_applied(db) -> None:
 
 
 # ---- Event round-trip --------------------------------------------------
+
 
 async def test_event_round_trip(db, seed_persona) -> None:
     """Append one event, retrieve by id, verify hash is stable."""
@@ -105,6 +105,7 @@ async def test_get_event_missing_returns_none(db) -> None:
 
 
 # ---- Idempotency -------------------------------------------------------
+
 
 async def test_idempotency_key_rejects_duplicate(db, seed_persona) -> None:
     """Second append with the same idempotency_key raises IdempotencyConflict."""
@@ -180,6 +181,7 @@ async def test_idempotency_none_allows_multiple(db, seed_persona) -> None:
 
 # ---- Signature verification --------------------------------------------
 
+
 async def test_signature_verification_rejects_bad(db, seed_persona) -> None:
     """Tampered signature is rejected BEFORE any DB write."""
     from memory_engine.core.events import append_event, compute_content_hash
@@ -249,6 +251,7 @@ async def test_signature_verification_rejects_wrong_key(db, seed_persona) -> Non
 
 # ---- Persona / counterparty constraints --------------------------------
 
+
 async def test_persona_slug_unique(db) -> None:
     """Two personas cannot share a slug."""
     import aiosqlite
@@ -280,6 +283,7 @@ async def test_counterparty_unique_per_persona(db, seed_persona) -> None:
 
 # ---- Scope CHECK constraint --------------------------------------------
 
+
 async def test_scope_invalid_value_rejected(db, seed_persona) -> None:
     """Inserting an event with scope outside the enum fails the CHECK."""
     import aiosqlite
@@ -302,7 +306,13 @@ async def test_scope_invalid_value_rejected(db, seed_persona) -> None:
                 (persona_id, type, scope, content_hash, payload, signature)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (seed_persona.id, "message_in", "secret",  # not in enum
-             content_hash, '{"text":"hi"}', sig),
+            (
+                seed_persona.id,
+                "message_in",
+                "secret",  # not in enum
+                content_hash,
+                '{"text":"hi"}',
+                sig,
+            ),
         )
         await db.commit()

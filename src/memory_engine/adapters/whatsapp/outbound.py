@@ -36,7 +36,7 @@ class OutboundPrepared:
     """A message approved and prepared for WhatsApp delivery."""
 
     approval: ApprovalResult
-    event_id: int | None    # persona_output event id if approved, None if blocked
+    event_id: int | None  # persona_output event id if approved, None if blocked
     counterparty_id: int
     persona_id: int
 

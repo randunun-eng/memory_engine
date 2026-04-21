@@ -25,6 +25,7 @@ class TestPersona:
         public_key_b64: base64-encoded public key, as stored in mcp_sources.
         private_key: raw Ed25519 signing-key bytes. TEST ONLY. Never write to disk.
     """
+
     id: int
     slug: str
     public_key_b64: str

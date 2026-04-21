@@ -152,7 +152,9 @@ async def test_non_negotiable_blocks_email_disclosure(db: aiosqlite.Connection) 
         reply_candidate="Sure, Randunu's personal email is randunu@private.com and his phone number is +94771234567.",
     )
     assert result.verdict == OutboundVerdict.BLOCKED
-    assert "non_negotiable" in (result.reason or "").lower() or "Non-negotiable" in (result.reason or "")
+    assert "non_negotiable" in (result.reason or "").lower() or "Non-negotiable" in (
+        result.reason or ""
+    )
 
 
 async def test_non_negotiable_blocks_meeting_agreement(db: aiosqlite.Connection) -> None:
@@ -305,7 +307,9 @@ async def test_redactor_strips_ssn(db: aiosqlite.Connection) -> None:
 async def test_redactor_strips_cross_counterparty_names(db: aiosqlite.Connection) -> None:
     """Cross-counterparty redactor strips other counterparties' names."""
     pid, _ = await _setup_persona_with_identity(db)
-    alice_id = await _setup_counterparty(db, pid, external_ref="whatsapp:+1111", display_name="Alice")
+    alice_id = await _setup_counterparty(
+        db, pid, external_ref="whatsapp:+1111", display_name="Alice"
+    )
     await _setup_counterparty(db, pid, external_ref="whatsapp:+2222", display_name="Bob Johnson")
 
     result = await redact_cross_counterparty(
@@ -322,7 +326,9 @@ async def test_redactor_strips_cross_counterparty_names(db: aiosqlite.Connection
 async def test_redactor_preserves_active_counterparty(db: aiosqlite.Connection) -> None:
     """Cross-counterparty redactor preserves the active counterparty's name."""
     pid, _ = await _setup_persona_with_identity(db)
-    alice_id = await _setup_counterparty(db, pid, external_ref="whatsapp:+1111", display_name="Alice")
+    alice_id = await _setup_counterparty(
+        db, pid, external_ref="whatsapp:+1111", display_name="Alice"
+    )
     await _setup_counterparty(db, pid, external_ref="whatsapp:+2222", display_name="Bob")
 
     result = await redact_cross_counterparty(

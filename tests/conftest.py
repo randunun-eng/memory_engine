@@ -59,6 +59,7 @@ async def seed_persona(db: aiosqlite.Connection):
     in production code paths.
     """
     from tests.fixtures.personas import make_test_persona
+
     return await make_test_persona(db)
 
 
@@ -76,6 +77,7 @@ async def seed_counterparty(db: aiosqlite.Connection, seed_persona):
 
 
 # ---- Markers -----------------------------------------------------------
+
 
 def pytest_collection_modifyitems(config, items):
     """Auto-skip eval/perf tests unless their flags are passed."""

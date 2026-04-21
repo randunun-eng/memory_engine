@@ -76,6 +76,14 @@ packages = ["src/memory_engine"]
 line-length = 100
 target-version = "py312"
 src = ["src", "tests"]
+# twincore-alpha/ is the reference deployment (twin-agent, control-plane,
+# whatsapp-bridge, persona YAMLs, bootstrap scripts). It's tracked in this
+# repo for traceability but isn't part of the memory_engine library; it
+# has different style conventions (Greek α in milestone labels, its own
+# pyproject where relevant). Excluding from ruff lint + format keeps CI
+# focused on the library surface. See twincore-alpha/DRIFT.md for its
+# own conventions.
+extend-exclude = ["twincore-alpha"]
 
 [tool.ruff.lint]
 select = [

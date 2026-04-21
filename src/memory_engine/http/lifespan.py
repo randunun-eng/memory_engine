@@ -30,11 +30,8 @@ import json
 import logging
 import os
 import time
-from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime
-from typing import Any
-
-from fastapi import FastAPI
+from typing import TYPE_CHECKING, Any
 
 from memory_engine.core.consolidator import consolidation_pass
 from memory_engine.db.connection import connect
@@ -43,6 +40,11 @@ from memory_engine.policy.backends.google_ai_studio import GoogleAIStudioBackend
 from memory_engine.policy.cache import PromptCache
 from memory_engine.policy.dispatch import PolicyDispatch
 from memory_engine.policy.registry import PromptRegistry
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator, Callable
+
+    from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +111,9 @@ async def _list_personas(conn: Any) -> list[int]:
 
 
 async def _resolve_persona_public_key(
-    conn: Any, persona_id: int, fallback: str,
+    conn: Any,
+    persona_id: int,
+    fallback: str,
 ) -> str:
     """Return the per-persona owner_public_key from the DB, falling back
     to the provided default (historically the shared env key).
@@ -174,7 +178,7 @@ async def _run_integrity_check(conn: Any) -> tuple[bool, str]:
     try:
         cursor = await conn.execute("PRAGMA integrity_check")
         rows = await cursor.fetchall()
-    except Exception as e:  # noqa: BLE001 — any exception is a corruption signal
+    except Exception as e:
         return False, f"integrity_check raised: {type(e).__name__}: {e}"
     if not rows:
         return False, "integrity_check returned no rows"
@@ -203,7 +207,8 @@ async def _consolidation_loop(
     """
     logger.info(
         "consolidator loop started: interval=%.1fs integrity_check_every=%d",
-        interval_s, integrity_check_every,
+        interval_s,
+        integrity_check_every,
     )
     tick = 0
     while True:
@@ -221,7 +226,8 @@ async def _consolidation_loop(
                     if not ok:
                         logger.error(
                             "INTEGRITY CHECK FAILED tick=%d detail=%s — halting consolidator loop",
-                            tick, detail,
+                            tick,
+                            detail,
                         )
                         # Stay in the loop so the gauge keeps at 0; do NOT
                         # run consolidation_pass (could corrupt further).
@@ -235,7 +241,9 @@ async def _consolidation_loop(
                     # Per-persona owner public key (migration 008) — falls
                     # back to the env-provided key when column is NULL.
                     persona_pub = await _resolve_persona_public_key(
-                        conn, persona_id, public_key_b64,
+                        conn,
+                        persona_id,
+                        public_key_b64,
                     )
                     stats = await consolidation_pass(
                         conn,
@@ -306,12 +314,12 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     logger.info(
         "env check: GEMINI_API_KEY=%s PRIV=%s PUB=%s",
-        bool(api_key), private_key is not None, bool(public_key_b64),
+        bool(api_key),
+        private_key is not None,
+        bool(public_key_b64),
     )
     if not api_key:
-        logger.warning(
-            "consolidator: GEMINI_API_KEY not set; consolidation loop disabled"
-        )
+        logger.warning("consolidator: GEMINI_API_KEY not set; consolidation loop disabled")
     elif private_key is None or not public_key_b64:
         logger.warning(
             "consolidator: MEMORY_ENGINE_CONSOLIDATOR_PRIVATE_KEY_B64 / "
@@ -324,10 +332,15 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
         registry.load_from_directory()
         cache = PromptCache()
         backend = GoogleAIStudioBackend(
-            api_key=api_key, max_rpm=max_rpm, warn_rpm=warn_rpm,
+            api_key=api_key,
+            max_rpm=max_rpm,
+            warn_rpm=warn_rpm,
         )
         dispatch = PolicyDispatch(
-            registry=registry, llm_backend=backend, cache=cache, model=model,
+            registry=registry,
+            llm_backend=backend,
+            cache=cache,
+            model=model,
         )
         embedder = await _get_embedder()
         embed_fn = _build_embed_fn(embedder)
@@ -337,7 +350,11 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
 
         task = asyncio.create_task(
             _consolidation_loop(
-                dispatch, embed_fn, private_key, public_key_b64, interval_s,
+                dispatch,
+                embed_fn,
+                private_key,
+                public_key_b64,
+                interval_s,
                 similarity_threshold,
             ),
             name="consolidator-loop",

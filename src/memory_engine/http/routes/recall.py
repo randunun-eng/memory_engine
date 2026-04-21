@@ -38,15 +38,15 @@ async def recall_endpoint(req: RecallRequest, request: Request) -> RecallRespons
     conn = await connect()
     try:
         # Resolve persona slug to id
-        cursor = await conn.execute(
-            "SELECT id FROM personas WHERE slug = ?", (req.persona_slug,)
-        )
+        cursor = await conn.execute("SELECT id FROM personas WHERE slug = ?", (req.persona_slug,))
         row = await cursor.fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail=f"Persona {req.persona_slug!r} not found")
         persona_id: int = row["id"]
 
-        as_of = req.as_of.replace(tzinfo=UTC) if req.as_of and req.as_of.tzinfo is None else req.as_of
+        as_of = (
+            req.as_of.replace(tzinfo=UTC) if req.as_of and req.as_of.tzinfo is None else req.as_of
+        )
 
         # Embed the query with the shared MiniLM singleton (from lifespan).
         # If the embedder isn't loaded (e.g. consolidator env vars missing),

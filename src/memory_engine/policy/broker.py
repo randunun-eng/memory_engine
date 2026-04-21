@@ -65,9 +65,7 @@ def validate_and_filter(site: str, params: dict[str, Any]) -> dict[str, Any]:
     # Check required
     missing = spec.required - params.keys()
     if missing:
-        raise DispatchError(
-            f"Missing required params for site={site!r}: {sorted(missing)}"
-        )
+        raise DispatchError(f"Missing required params for site={site!r}: {sorted(missing)}")
 
     # Filter to declared params only
     allowed = spec.required | spec.optional

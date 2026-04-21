@@ -35,7 +35,7 @@ def canonicalize_phone(raw: str) -> str:
     # Strip the whatsapp: prefix if already present
     number = raw.strip()
     if number.lower().startswith("whatsapp:"):
-        number = number[len("whatsapp:"):]
+        number = number[len("whatsapp:") :]
 
     # Remove formatting characters
     number = re.sub(r"[\s\-\.\(\)]", "", number)
@@ -47,8 +47,7 @@ def canonicalize_phone(raw: str) -> str:
     # Validate: must be + followed by 7-15 digits (E.164 spec)
     if not re.fullmatch(r"\+\d{7,15}", number):
         raise ConfigError(
-            f"Cannot canonicalize phone number: {raw!r} → {number!r} "
-            f"(expected +<7-15 digits>)"
+            f"Cannot canonicalize phone number: {raw!r} → {number!r} (expected +<7-15 digits>)"
         )
 
     return f"whatsapp:{number}"
@@ -71,14 +70,11 @@ def canonicalize_group_jid(raw: str) -> str:
     """
     jid = raw.strip()
     if jid.lower().startswith("whatsapp-group:"):
-        jid = jid[len("whatsapp-group:"):]
+        jid = jid[len("whatsapp-group:") :]
 
     # Basic validation: should end with @g.us for groups
     if not jid.endswith("@g.us"):
-        raise ConfigError(
-            f"Cannot canonicalize group JID: {raw!r} "
-            f"(expected format: <id>@g.us)"
-        )
+        raise ConfigError(f"Cannot canonicalize group JID: {raw!r} (expected format: <id>@g.us)")
 
     return f"whatsapp-group:{jid}"
 

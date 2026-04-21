@@ -65,9 +65,7 @@ class HaltState:
         self._halted = True
         self._invariant_name = invariant_name
         self._reason = reason
-        logger.critical(
-            "SYSTEM HALTED — invariant %s: %s", invariant_name, reason
-        )
+        logger.critical("SYSTEM HALTED — invariant %s: %s", invariant_name, reason)
 
     def clear(self) -> None:
         """Clear the in-memory halt flag."""
@@ -214,6 +212,4 @@ def assert_not_halted() -> None:
     """
     state = get_halt_state()
     if state.is_halted:
-        raise InvariantViolation(
-            f"System halted: {state.invariant_name} — {state.reason}"
-        )
+        raise InvariantViolation(f"System halted: {state.invariant_name} — {state.reason}")

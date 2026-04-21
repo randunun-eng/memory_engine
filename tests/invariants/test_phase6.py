@@ -156,9 +156,7 @@ async def test_promote_shadow_clears_old_active(db: aiosqlite.Connection) -> Non
     count = (await cursor.fetchone())[0]
     assert count == 1, "Exactly one active per site after promotion"
 
-    cursor = await db.execute(
-        "SELECT active FROM prompt_templates WHERE id = ?", (old_id,)
-    )
+    cursor = await db.execute("SELECT active FROM prompt_templates WHERE id = ?", (old_id,))
     assert (await cursor.fetchone())["active"] == 0
 
 
@@ -180,13 +178,9 @@ async def test_rollback_restores_previous(db: aiosqlite.Connection) -> None:
 
     await rollback_to_template(db, site="extract", previous_template_id=v1_id)
 
-    cursor = await db.execute(
-        "SELECT active FROM prompt_templates WHERE id = ?", (v1_id,)
-    )
+    cursor = await db.execute("SELECT active FROM prompt_templates WHERE id = ?", (v1_id,))
     assert (await cursor.fetchone())["active"] == 1
-    cursor = await db.execute(
-        "SELECT active FROM prompt_templates WHERE id = ?", (v2_id,)
-    )
+    cursor = await db.execute("SELECT active FROM prompt_templates WHERE id = ?", (v2_id,))
     assert (await cursor.fetchone())["active"] == 0
 
 
@@ -197,4 +191,5 @@ def pytest_raises_integrity():
     """Context manager expecting a SQLite integrity error."""
     import aiosqlite
     import pytest
+
     return pytest.raises(aiosqlite.IntegrityError)

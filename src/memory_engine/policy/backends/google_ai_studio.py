@@ -60,7 +60,9 @@ class AIStudioRateLimiter:
                     wait = 60.0 - (now - self._window[0]) + 0.05
                     logger.warning(
                         "ai_studio[consolidator] at cap %d/%d RPM, sleeping %.2fs",
-                        in_window, self.max_rpm, wait,
+                        in_window,
+                        self.max_rpm,
+                        wait,
                     )
                     await asyncio.sleep(max(wait, 0.1))
                     continue
@@ -68,7 +70,8 @@ class AIStudioRateLimiter:
                 if in_window >= self.warn_rpm:
                     logger.info(
                         "ai_studio[consolidator] approaching cap %d/%d RPM",
-                        in_window, self.max_rpm,
+                        in_window,
+                        self.max_rpm,
                     )
 
                 self._window.append(now)
@@ -142,7 +145,8 @@ class GoogleAIStudioBackend:
             if 500 <= r.status_code < 600 and attempt == 0:
                 logger.warning(
                     "ai_studio %d transient, retrying once: %s",
-                    r.status_code, r.text[:200],
+                    r.status_code,
+                    r.text[:200],
                 )
                 await asyncio.sleep(2.0)
                 continue
@@ -155,7 +159,7 @@ class GoogleAIStudioBackend:
         choices = data.get("choices") or []
         if not choices:
             raise RuntimeError(f"ai_studio returned no choices: {str(data)[:200]!r}")
-        content = choices[0].get("message", {}).get("content", "").strip()
+        content: str = choices[0].get("message", {}).get("content", "").strip()
         if not content:
             raise RuntimeError("ai_studio returned empty content")
         return content

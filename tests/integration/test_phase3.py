@@ -109,9 +109,7 @@ async def _insert_neuron(
 async def test_clean_scan_produces_no_violations(db) -> None:
     """A fresh DB with no data produces no violations (except meta-warnings)."""
     persona = await make_test_persona(db)
-    event_id = await _append_test_event(
-        db, persona.id, persona.private_key, persona.public_key_b64
-    )
+    event_id = await _append_test_event(db, persona.id, persona.private_key, persona.public_key_b64)
     await _insert_neuron(db, persona.id, [event_id])
 
     checker = InvariantChecker(db, persona_id=persona.id)
@@ -138,24 +136,25 @@ async def test_checker_detects_cross_counterparty_neuron(db) -> None:
     await db.commit()
 
     # Get counterparty ids
-    cursor = await db.execute(
-        "SELECT id FROM counterparties WHERE external_ref = 'whatsapp:+1111'"
-    )
+    cursor = await db.execute("SELECT id FROM counterparties WHERE external_ref = 'whatsapp:+1111'")
     cp1 = (await cursor.fetchone())["id"]
-    cursor = await db.execute(
-        "SELECT id FROM counterparties WHERE external_ref = 'whatsapp:+2222'"
-    )
+    cursor = await db.execute("SELECT id FROM counterparties WHERE external_ref = 'whatsapp:+2222'")
     cp2 = (await cursor.fetchone())["id"]
 
     # Event belongs to cp1
     event_id = await _append_test_event(
-        db, persona.id, persona.private_key, persona.public_key_b64,
+        db,
+        persona.id,
+        persona.private_key,
+        persona.public_key_b64,
         counterparty_id=cp1,
     )
 
     # Neuron claims cp2 but cites cp1's event — cross-counterparty leak
     await _insert_neuron(
-        db, persona.id, [event_id],
+        db,
+        persona.id,
+        [event_id],
         kind="counterparty_fact",
         counterparty_id=cp2,
         content="Leaked fact from wrong counterparty",
@@ -219,7 +218,9 @@ async def test_warning_violation_logs_but_does_not_halt(db) -> None:
         db, persona.id, persona.private_key, persona.public_key_b64, text="two"
     )
     await _insert_neuron(
-        db, persona.id, [e1, e2, e1],  # 3 total, 2 distinct
+        db,
+        persona.id,
+        [e1, e2, e1],  # 3 total, 2 distinct
         distinct_source_count=3,  # claims 3 distinct but only 2 unique
     )
 
@@ -231,7 +232,9 @@ async def test_warning_violation_logs_but_does_not_halt(db) -> None:
     violations = await checker.run_scan()
 
     # Should find the mismatch
-    mismatch = [v for v in violations if v.invariant_name == "distinct_count_matches_unique_sources"]
+    mismatch = [
+        v for v in violations if v.invariant_name == "distinct_count_matches_unique_sources"
+    ]
     assert len(mismatch) >= 1
     assert mismatch[0].severity == "warning"
 
@@ -317,9 +320,7 @@ async def test_halt_persists_to_healing_log(db) -> None:
         persona_id=1,
     )
 
-    cursor = await db.execute(
-        "SELECT * FROM healing_log WHERE invariant_name = 'test_persistence'"
-    )
+    cursor = await db.execute("SELECT * FROM healing_log WHERE invariant_name = 'test_persistence'")
     row = await cursor.fetchone()
     assert row is not None
     assert row["severity"] == "critical"
@@ -364,7 +365,9 @@ async def test_repair_distinct_count_mismatch(db) -> None:
     # source_event_ids=[e1, e2, e1] → 3 total, 2 unique.
     # Set distinct_source_count=3 (wrong; should be 2). CHECK passes: 3 <= 3.
     nid = await _insert_neuron(
-        db, persona.id, [e1, e2, e1],  # 3 total, 2 distinct
+        db,
+        persona.id,
+        [e1, e2, e1],  # 3 total, 2 distinct
         distinct_source_count=3,  # wrong — should be 2
     )
 
@@ -378,9 +381,7 @@ async def test_repair_distinct_count_mismatch(db) -> None:
     result = await repair_distinct_count_mismatch(db, violation)
     assert result is True
 
-    cursor = await db.execute(
-        "SELECT distinct_source_count FROM neurons WHERE id = ?", (nid,)
-    )
+    cursor = await db.execute("SELECT distinct_source_count FROM neurons WHERE id = ?", (nid,))
     row = await cursor.fetchone()
     assert row["distinct_source_count"] == 2
 
@@ -389,7 +390,10 @@ async def test_repair_missing_provenance_quarantines(db) -> None:
     """repair_missing_provenance supersedes the neuron and adds quarantine entry."""
     persona = await make_test_persona(db)
     event_id = await _append_test_event(
-        db, persona.id, persona.private_key, persona.public_key_b64,
+        db,
+        persona.id,
+        persona.private_key,
+        persona.public_key_b64,
     )
 
     # Insert a valid neuron, then corrupt it to simulate schema-drift provenance loss.
@@ -417,9 +421,7 @@ async def test_repair_missing_provenance_quarantines(db) -> None:
     assert result is True
 
     # Neuron should be superseded
-    cursor = await db.execute(
-        "SELECT superseded_at FROM neurons WHERE id = ?", (nid,)
-    )
+    cursor = await db.execute("SELECT superseded_at FROM neurons WHERE id = ?", (nid,))
     row = await cursor.fetchone()
     assert row["superseded_at"] is not None
 
@@ -499,9 +501,7 @@ async def test_halt_state_table_has_engaged_at(db) -> None:
         persona_id=None,
     )
 
-    cursor = await db.execute(
-        "SELECT engaged_at, active FROM halt_state WHERE id = 1"
-    )
+    cursor = await db.execute("SELECT engaged_at, active FROM halt_state WHERE id = 1")
     row = await cursor.fetchone()
     assert row is not None
     assert row["active"] == 1
@@ -540,9 +540,7 @@ async def test_healer_loop_runs_one_scan(db) -> None:
     InvariantChecker.run_scan = patched_run_scan  # type: ignore[assignment]
 
     try:
-        task = asyncio.create_task(
-            healer_loop(db, interval=0.1, persona_id=None)
-        )
+        task = asyncio.create_task(healer_loop(db, interval=0.1, persona_id=None))
 
         # Wait for the scan to complete (with timeout)
         await asyncio.wait_for(scan_complete.wait(), timeout=5.0)
@@ -580,9 +578,7 @@ async def test_healer_loop_survives_exception(db) -> None:
     InvariantChecker.run_scan = failing_then_working_scan  # type: ignore[assignment]
 
     try:
-        task = asyncio.create_task(
-            healer_loop(db, interval=0.05, persona_id=None)
-        )
+        task = asyncio.create_task(healer_loop(db, interval=0.05, persona_id=None))
 
         # Wait enough time for at least 2 scans
         await asyncio.sleep(0.3)

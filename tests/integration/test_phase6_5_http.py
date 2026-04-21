@@ -66,9 +66,7 @@ def test_health_returns_ok(http_client: TestClient) -> None:
 # ---- POST /v1/personas ----
 
 
-async def test_create_persona_smoke(
-    db: aiosqlite.Connection, http_client: TestClient
-) -> None:
+async def test_create_persona_smoke(db: aiosqlite.Connection, http_client: TestClient) -> None:
     r = http_client.post(
         "/v1/personas",
         json={"slug": "smoke_persona", "owner_public_key": "ignored_for_alpha"},
@@ -79,9 +77,7 @@ async def test_create_persona_smoke(
     assert isinstance(body["id"], int)
 
     # Side effect: row exists
-    cursor = await db.execute(
-        "SELECT slug FROM personas WHERE id = ?", (body["id"],)
-    )
+    cursor = await db.execute("SELECT slug FROM personas WHERE id = ?", (body["id"],))
     row = await cursor.fetchone()
     assert row is not None
     assert row["slug"] == "smoke_persona"
@@ -90,13 +86,9 @@ async def test_create_persona_smoke(
 # ---- POST /v1/mcp/register ----
 
 
-async def test_register_mcp_smoke(
-    db: aiosqlite.Connection, http_client: TestClient
-) -> None:
+async def test_register_mcp_smoke(db: aiosqlite.Connection, http_client: TestClient) -> None:
     # Create persona via the HTTP endpoint (dogfood)
-    r = http_client.post(
-        "/v1/personas", json={"slug": "mcp_smoke", "owner_public_key": "x"}
-    )
+    r = http_client.post("/v1/personas", json={"slug": "mcp_smoke", "owner_public_key": "x"})
     assert r.status_code == 201, r.text
 
     # Generate a real Ed25519 public key
@@ -133,13 +125,9 @@ async def test_register_mcp_smoke(
 # ---- POST /v1/identity/load ----
 
 
-async def test_load_identity_smoke(
-    db: aiosqlite.Connection, http_client: TestClient
-) -> None:
+async def test_load_identity_smoke(db: aiosqlite.Connection, http_client: TestClient) -> None:
     # Create persona
-    r = http_client.post(
-        "/v1/personas", json={"slug": "identity_smoke"}
-    )
+    r = http_client.post("/v1/personas", json={"slug": "identity_smoke"})
     assert r.status_code == 201
 
     # Minimal valid identity YAML per parse_identity_yaml's required fields
@@ -187,13 +175,9 @@ deletion_policy:
 # ---- POST /v1/ingest ----
 
 
-async def test_ingest_smoke(
-    db: aiosqlite.Connection, http_client: TestClient
-) -> None:
+async def test_ingest_smoke(db: aiosqlite.Connection, http_client: TestClient) -> None:
     # Persona + MCP setup
-    r = http_client.post(
-        "/v1/personas", json={"slug": "ingest_smoke"}
-    )
+    r = http_client.post("/v1/personas", json={"slug": "ingest_smoke"})
     assert r.status_code == 201
     persona_id = r.json()["id"]
 

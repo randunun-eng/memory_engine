@@ -112,9 +112,7 @@ def _parse_extraction_response(
     """Parse the extract_entities response into NeuronCandidate objects."""
     claims = response.get("claims", [])
     if not isinstance(claims, list):
-        raise LLMResponseParseError(
-            f"Expected 'claims' to be a list, got {type(claims).__name__}"
-        )
+        raise LLMResponseParseError(f"Expected 'claims' to be a list, got {type(claims).__name__}")
 
     # Determine kind from context
     kind = "counterparty_fact" if counterparty_id is not None else "self_fact"

@@ -31,14 +31,10 @@ async def register_mcp_endpoint(req: RegisterMCPRequest) -> RegisterMCPResponse:
     conn = await connect()
     try:
         # Resolve slug → persona_id
-        cursor = await conn.execute(
-            "SELECT id FROM personas WHERE slug = ?", (req.persona_slug,)
-        )
+        cursor = await conn.execute("SELECT id FROM personas WHERE slug = ?", (req.persona_slug,))
         row = await cursor.fetchone()
         if row is None:
-            raise HTTPException(
-                status_code=404, detail=f"Persona {req.persona_slug!r} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Persona {req.persona_slug!r} not found")
         persona_id = int(row["id"])
 
         mcp, _bearer_token = await register_mcp(

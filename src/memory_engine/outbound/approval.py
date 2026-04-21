@@ -68,8 +68,8 @@ class ApprovalResult:
     """Full result of outbound approval."""
 
     verdict: OutboundVerdict
-    text: str              # approved: possibly-redacted text. blocked: original text.
-    reason: str | None     # why it was blocked, or None if approved
+    text: str  # approved: possibly-redacted text. blocked: original text.
+    reason: str | None  # why it was blocked, or None if approved
     redactions: tuple[str, ...] = ()  # descriptions of any redactions applied
 
 
@@ -221,9 +221,7 @@ async def _check_non_negotiables(
                 # Expected response: {"violated": true/false, "reason": "..."}
                 violated = result.get("violated", False)
             except Exception:
-                logger.exception(
-                    "nonneg_judge dispatch failed for rule: %s", rule[:60]
-                )
+                logger.exception("nonneg_judge dispatch failed for rule: %s", rule[:60])
                 # On LLM failure, fall through to keyword check
                 violated = _keyword_nonneg_check(text, rule)
         else:

@@ -17,6 +17,7 @@ from hypothesis import strategies as st
 
 # ---- Rule 1: events immutable ------------------------------------------
 
+
 async def test_event_update_is_forbidden(db, seed_persona) -> None:
     """Rule 1: events are immutable at the DB layer.
 
@@ -93,6 +94,7 @@ async def test_event_delete_is_forbidden(db, seed_persona) -> None:
 
 # ---- Rule 14: content hash determinism (foundation) --------------------
 
+
 @given(
     content=st.dictionaries(
         keys=st.text(min_size=1, max_size=50),
@@ -124,12 +126,14 @@ def test_content_hash_is_deterministic(content: dict) -> None:
     content_a=st.dictionaries(
         keys=st.text(min_size=1, max_size=20),
         values=st.text(max_size=50),
-        min_size=1, max_size=5,
+        min_size=1,
+        max_size=5,
     ),
     content_b=st.dictionaries(
         keys=st.text(min_size=1, max_size=20),
         values=st.text(max_size=50),
-        min_size=1, max_size=5,
+        min_size=1,
+        max_size=5,
     ),
 )
 def test_different_content_has_different_hash(content_a: dict, content_b: dict) -> None:

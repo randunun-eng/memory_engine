@@ -91,7 +91,9 @@ async def consolidation_pass(
     # `max_events_per_pass` caps the prompt size / LLM latency per tick; the
     # next tick picks up the remainder. None means "no cap".
     new_events = await _find_unconsolidated_events(
-        conn, persona_id, limit=max_events_per_pass,
+        conn,
+        persona_id,
+        limit=max_events_per_pass,
     )
     for event in new_events:
         await _enter_working_memory(conn, persona_id, event.id)
@@ -127,8 +129,12 @@ async def consolidation_pass(
 
             if result.verdict == Verdict.ACCEPT:
                 neuron_id = await _promote_candidate(
-                    conn, candidate, persona_id, embedder_rev,
-                    private_key, public_key_b64,
+                    conn,
+                    candidate,
+                    persona_id,
+                    embedder_rev,
+                    private_key,
+                    public_key_b64,
                     dispatch=dispatch,
                     embed_fn=embed_fn,
                 )
@@ -136,7 +142,9 @@ async def consolidation_pass(
                     stats.neurons_promoted += 1
             else:
                 await quarantine_candidate(
-                    conn, candidate, persona_id,
+                    conn,
+                    candidate,
+                    persona_id,
                     reason=result.reason or "unknown",
                 )
                 stats.candidates_quarantined += 1
@@ -151,16 +159,23 @@ async def consolidation_pass(
 
     # 4. Prune — remove below-threshold entries
     pruned = await _prune_working_memory(
-        conn, persona_id, activation_threshold, working_memory_capacity,
+        conn,
+        persona_id,
+        activation_threshold,
+        working_memory_capacity,
     )
     stats.entries_pruned = pruned
 
     logger.info(
         "Consolidation pass persona=%d: %d events, %d promoted, %d quarantined, "
         "%d reinforced, %d decayed, %d pruned",
-        persona_id, stats.events_entered, stats.neurons_promoted,
-        stats.candidates_quarantined, stats.neurons_reinforced,
-        stats.entries_decayed, stats.entries_pruned,
+        persona_id,
+        stats.events_entered,
+        stats.neurons_promoted,
+        stats.candidates_quarantined,
+        stats.neurons_reinforced,
+        stats.entries_decayed,
+        stats.entries_pruned,
     )
 
     return stats
@@ -335,14 +350,19 @@ async def _promote_candidate(
         await conn.commit()
         logger.info(
             "dedup: reinforced existing neuron %d (distinct=%d) instead of inserting duplicate",
-            existing_row["id"], new_distinct,
+            existing_row["id"],
+            new_distinct,
         )
         return int(existing_row["id"])
 
     # Check for contradictions with existing neurons
     if dispatch is not None:
         overlapping = await find_overlapping_neurons(
-            conn, persona_id, candidate.content, candidate.kind, counterparty_id,
+            conn,
+            persona_id,
+            candidate.content,
+            candidate.kind,
+            counterparty_id,
         )
         for existing in overlapping:
             try:
@@ -359,7 +379,8 @@ async def _promote_candidate(
                     pass
             except Exception:
                 logger.warning(
-                    "Contradiction check failed for neuron %d", existing["id"],
+                    "Contradiction check failed for neuron %d",
+                    existing["id"],
                     exc_info=True,
                 )
 
@@ -407,7 +428,11 @@ async def _promote_candidate(
     # Now handle supersession for contradictions
     if dispatch is not None:
         overlapping = await find_overlapping_neurons(
-            conn, persona_id, candidate.content, candidate.kind, counterparty_id,
+            conn,
+            persona_id,
+            candidate.content,
+            candidate.kind,
+            counterparty_id,
         )
         for existing in overlapping:
             if existing["id"] == neuron_id:
@@ -424,7 +449,10 @@ async def _promote_candidate(
                     await supersede_neuron(conn, existing["id"], neuron_id)
                     # Rule 8: emit supersession event
                     await _emit_neuron_event(
-                        conn, persona_id, private_key, public_key_b64,
+                        conn,
+                        persona_id,
+                        private_key,
+                        public_key_b64,
                         event_type="operator_action",
                         payload={
                             "action": "supersede",
@@ -435,13 +463,17 @@ async def _promote_candidate(
                     )
             except Exception:
                 logger.warning(
-                    "Supersession failed for neuron %d", existing["id"],
+                    "Supersession failed for neuron %d",
+                    existing["id"],
                     exc_info=True,
                 )
 
     # Rule 8: emit neuron creation event
     await _emit_neuron_event(
-        conn, persona_id, private_key, public_key_b64,
+        conn,
+        persona_id,
+        private_key,
+        public_key_b64,
         event_type="operator_action",
         payload={
             "action": "neuron_created",

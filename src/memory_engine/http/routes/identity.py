@@ -36,9 +36,7 @@ async def load_identity_endpoint(request: Request) -> LoadIdentityResponse:
 
     conn = await connect()
     try:
-        cursor = await conn.execute(
-            "SELECT id FROM personas WHERE slug = ?", (doc.persona_slug,)
-        )
+        cursor = await conn.execute("SELECT id FROM personas WHERE slug = ?", (doc.persona_slug,))
         row = await cursor.fetchone()
         if row is None:
             raise HTTPException(
@@ -48,8 +46,6 @@ async def load_identity_endpoint(request: Request) -> LoadIdentityResponse:
         persona_id = int(row["id"])
 
         saved = await save_identity(conn, persona_id, yaml_text)
-        return LoadIdentityResponse(
-            ok=True, persona_id=persona_id, version=saved.version
-        )
+        return LoadIdentityResponse(ok=True, persona_id=persona_id, version=saved.version)
     finally:
         await conn.close()

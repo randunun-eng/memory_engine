@@ -113,7 +113,7 @@ def check_self_fact_contradiction(
             if prefix in text_lower:
                 # Extract the claim after negation
                 neg_start = text_lower.index(prefix) + len(prefix)
-                neg_claim = text_lower[neg_start:neg_start + 50]
+                neg_claim = text_lower[neg_start : neg_start + 50]
                 # Check overlap with fact
                 fact_words = set(fact_lower.split())
                 claim_words = set(neg_claim.split())

@@ -35,23 +35,72 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 _SUBJECTS = [
-    "Python", "Rust", "Go", "TypeScript", "Java", "Kotlin", "Swift", "C++",
-    "machine learning", "deep learning", "reinforcement learning", "NLP",
-    "computer vision", "data engineering", "backend systems", "distributed systems",
-    "solar panels", "wind turbines", "battery storage", "EV charging",
-    "cooking", "gardening", "photography", "hiking", "cycling", "reading",
-    "databases", "PostgreSQL", "SQLite", "Redis", "MongoDB", "Elasticsearch",
-    "Kubernetes", "Docker", "Terraform", "AWS", "GCP", "Azure",
+    "Python",
+    "Rust",
+    "Go",
+    "TypeScript",
+    "Java",
+    "Kotlin",
+    "Swift",
+    "C++",
+    "machine learning",
+    "deep learning",
+    "reinforcement learning",
+    "NLP",
+    "computer vision",
+    "data engineering",
+    "backend systems",
+    "distributed systems",
+    "solar panels",
+    "wind turbines",
+    "battery storage",
+    "EV charging",
+    "cooking",
+    "gardening",
+    "photography",
+    "hiking",
+    "cycling",
+    "reading",
+    "databases",
+    "PostgreSQL",
+    "SQLite",
+    "Redis",
+    "MongoDB",
+    "Elasticsearch",
+    "Kubernetes",
+    "Docker",
+    "Terraform",
+    "AWS",
+    "GCP",
+    "Azure",
 ]
 _VERBS = [
-    "works with", "is learning", "prefers", "recommends", "uses",
-    "has experience in", "is interested in", "built a project using",
-    "teaches", "wrote a blog about", "gave a talk on", "contributed to",
+    "works with",
+    "is learning",
+    "prefers",
+    "recommends",
+    "uses",
+    "has experience in",
+    "is interested in",
+    "built a project using",
+    "teaches",
+    "wrote a blog about",
+    "gave a talk on",
+    "contributed to",
 ]
 _CONTEXTS = [
-    "at work", "for a side project", "during university", "at a hackathon",
-    "for a client", "in production", "for personal use", "in a team of five",
-    "since 2020", "since last year", "for the past decade", "recently",
+    "at work",
+    "for a side project",
+    "during university",
+    "at a hackathon",
+    "for a client",
+    "in production",
+    "for personal use",
+    "in a team of five",
+    "since 2020",
+    "since last year",
+    "for the past decade",
+    "recently",
 ]
 
 
@@ -66,6 +115,7 @@ def _generate_content(rng: random.Random) -> str:
 # ---------------------------------------------------------------------------
 # Seed 10k neurons (optionally with embeddings)
 # ---------------------------------------------------------------------------
+
 
 async def _seed_10k(
     conn: aiosqlite.Connection,
@@ -187,8 +237,10 @@ async def _seed_10k(
         t0 = time.perf_counter()
         embeddings = model.encode(texts, batch_size=64, show_progress_bar=True)
         embed_time_s = time.perf_counter() - t0
-        print(f"[perf] Embedding done in {embed_time_s:.1f}s "
-              f"({len(texts) / embed_time_s:.0f} embeds/s)")
+        print(
+            f"[perf] Embedding done in {embed_time_s:.1f}s "
+            f"({len(texts) / embed_time_s:.0f} embeds/s)"
+        )
 
         for (nid, _), emb in zip(all_contents, embeddings, strict=True):
             await conn.execute(
@@ -209,9 +261,11 @@ async def _seed_10k(
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="module")
 def event_loop():
     import asyncio
+
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
@@ -242,8 +296,10 @@ async def hybrid_db(tmp_path_factory):
     conn = await connect(str(db_path))
     await apply_all(conn)
     info = await _seed_10k(conn, embed=True)
-    print(f"\n[perf/hybrid] Seeded {info['total']} neurons with embeddings "
-          f"({info['embed_time_s']:.1f}s)")
+    print(
+        f"\n[perf/hybrid] Seeded {info['total']} neurons with embeddings "
+        f"({info['embed_time_s']:.1f}s)"
+    )
     yield conn
     await conn.close()
 
@@ -252,6 +308,7 @@ async def hybrid_db(tmp_path_factory):
 def embedder():
     """Pre-loaded MiniLM embedder for query embedding."""
     from sentence_transformers import SentenceTransformer
+
     return SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
 
 
@@ -295,6 +352,7 @@ def _report(label: str, latencies: list[float]) -> None:
 # Tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.perf
 async def test_recall_latency_10k_bm25_only(bm25_db) -> None:
     """BM25-only p50/p99 on 10k neurons."""
@@ -326,8 +384,13 @@ async def test_recall_latency_10k_hybrid(hybrid_db, embedder) -> None:
 
     # Warm up
     await recall(
-        hybrid_db, persona_id=1, query="warmup", lens="self", top_k=10,
-        query_embedding=query_map[query_texts[0]], embedder_rev=_EMBEDDER_REV,
+        hybrid_db,
+        persona_id=1,
+        query="warmup",
+        lens="self",
+        top_k=10,
+        query_embedding=query_map[query_texts[0]],
+        embedder_rev=_EMBEDDER_REV,
     )
 
     latencies: list[float] = []
@@ -336,8 +399,13 @@ async def test_recall_latency_10k_hybrid(hybrid_db, embedder) -> None:
         for _ in range(5):
             start = time.perf_counter()
             await recall(
-                hybrid_db, persona_id=1, query=query_text, lens=lens, top_k=10,
-                query_embedding=emb, embedder_rev=_EMBEDDER_REV,
+                hybrid_db,
+                persona_id=1,
+                query=query_text,
+                lens=lens,
+                top_k=10,
+                query_embedding=emb,
+                embedder_rev=_EMBEDDER_REV,
             )
             latencies.append((time.perf_counter() - start) * 1000)
 
@@ -363,8 +431,13 @@ async def test_recall_latency_10k_production_realistic(hybrid_db, embedder) -> N
     embedder.encode(["warmup"])
     warmup_emb = embedder.encode(["warmup"]).tolist()[0]
     await recall(
-        hybrid_db, persona_id=1, query="warmup", lens="self", top_k=10,
-        query_embedding=warmup_emb, embedder_rev=_EMBEDDER_REV,
+        hybrid_db,
+        persona_id=1,
+        query="warmup",
+        lens="self",
+        top_k=10,
+        query_embedding=warmup_emb,
+        embedder_rev=_EMBEDDER_REV,
     )
 
     combined_latencies: list[float] = []
@@ -382,8 +455,13 @@ async def test_recall_latency_10k_production_realistic(hybrid_db, embedder) -> N
 
             t_recall_start = time.perf_counter()
             await recall(
-                hybrid_db, persona_id=1, query=query_text, lens=lens, top_k=10,
-                query_embedding=emb, embedder_rev=_EMBEDDER_REV,
+                hybrid_db,
+                persona_id=1,
+                query=query_text,
+                lens=lens,
+                top_k=10,
+                query_embedding=emb,
+                embedder_rev=_EMBEDDER_REV,
             )
             recall_latencies.append((time.perf_counter() - t_recall_start) * 1000)
 

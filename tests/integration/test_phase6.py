@@ -190,8 +190,13 @@ async def test_get_active_returns_active_template(db: aiosqlite.Connection) -> N
 async def test_get_shadow_returns_configured_shadow(db: aiosqlite.Connection) -> None:
     await _insert_prompt(db, site="extract", version="1.0", text="ACTIVE", active=True)
     await _insert_prompt(
-        db, site="extract", version="2.0", text="SHADOW",
-        active=False, shadow=True, traffic_pct=0.1,
+        db,
+        site="extract",
+        version="2.0",
+        text="SHADOW",
+        active=False,
+        shadow=True,
+        traffic_pct=0.1,
     )
 
     result = await get_shadow_template(db, "extract")
@@ -205,8 +210,13 @@ async def test_shadow_not_returned_if_traffic_zero(db: aiosqlite.Connection) -> 
     """Zero-traffic shadow is treated as no shadow (saves the LLM call)."""
     await _insert_prompt(db, site="extract", version="1.0", text="ACTIVE", active=True)
     await _insert_prompt(
-        db, site="extract", version="2.0", text="SHADOW",
-        active=False, shadow=True, traffic_pct=0.0,
+        db,
+        site="extract",
+        version="2.0",
+        text="SHADOW",
+        active=False,
+        shadow=True,
+        traffic_pct=0.0,
     )
 
     result = await get_shadow_template(db, "extract")
@@ -223,12 +233,17 @@ async def test_dispatch_runs_only_active_when_no_shadow(db: aiosqlite.Connection
     await _insert_prompt(db, site="extract", version="1.0", text="ACTIVE", active=True)
 
     calls: list[str] = []
+
     def fake_llm(template: str, inputs: dict) -> dict:
         calls.append(template)
         return {"result": template}
 
     result = await dispatch_with_shadow(
-        db, persona_id=pid, site="extract", inputs={"x": 1}, llm_fn=fake_llm,
+        db,
+        persona_id=pid,
+        site="extract",
+        inputs={"x": 1},
+        llm_fn=fake_llm,
     )
     assert calls == ["ACTIVE"]
     assert result.active_output == {"result": "ACTIVE"}
@@ -245,18 +260,28 @@ async def test_dispatch_runs_both_when_shadow_drawn(db: aiosqlite.Connection) ->
 
     await _insert_prompt(db, site="extract", version="1.0", text="ACTIVE", active=True)
     await _insert_prompt(
-        db, site="extract", version="2.0", text="SHADOW",
-        active=False, shadow=True, traffic_pct=1.0,
+        db,
+        site="extract",
+        version="2.0",
+        text="SHADOW",
+        active=False,
+        shadow=True,
+        traffic_pct=1.0,
     )
 
     calls: list[str] = []
+
     def fake_llm(template: str, inputs: dict) -> dict:
         calls.append(template)
         return {"template": template, "input": inputs}
 
     result = await dispatch_with_shadow(
-        db, persona_id=pid, site="extract", inputs={"x": 1},
-        llm_fn=fake_llm, rng=lambda: 0.0,  # always draw
+        db,
+        persona_id=pid,
+        site="extract",
+        inputs={"x": 1},
+        llm_fn=fake_llm,
+        rng=lambda: 0.0,  # always draw
     )
     assert calls == ["ACTIVE", "SHADOW"]
     assert result.logged is True
@@ -275,19 +300,29 @@ async def test_dispatch_skips_shadow_when_rng_above_threshold(db: aiosqlite.Conn
 
     await _insert_prompt(db, site="extract", version="1.0", text="ACTIVE", active=True)
     await _insert_prompt(
-        db, site="extract", version="2.0", text="SHADOW",
-        active=False, shadow=True, traffic_pct=0.1,
+        db,
+        site="extract",
+        version="2.0",
+        text="SHADOW",
+        active=False,
+        shadow=True,
+        traffic_pct=0.1,
     )
 
     calls: list[str] = []
+
     def fake_llm(template: str, inputs: dict) -> dict:
         calls.append(template)
         return {}
 
     # rng returns 0.5, which is > 0.1 threshold
     result = await dispatch_with_shadow(
-        db, persona_id=pid, site="extract", inputs={"x": 1},
-        llm_fn=fake_llm, rng=lambda: 0.5,
+        db,
+        persona_id=pid,
+        site="extract",
+        inputs={"x": 1},
+        llm_fn=fake_llm,
+        rng=lambda: 0.5,
     )
     assert calls == ["ACTIVE"]
     assert result.shadow_output is None
@@ -303,8 +338,13 @@ async def test_compute_daily_comparison_aggregates(db: aiosqlite.Connection) -> 
 
     active_id = await _insert_prompt(db, site="extract", version="1.0", text="A", active=True)
     shadow_id = await _insert_prompt(
-        db, site="extract", version="2.0", text="S",
-        active=False, shadow=True, traffic_pct=1.0,
+        db,
+        site="extract",
+        version="2.0",
+        text="S",
+        active=False,
+        shadow=True,
+        traffic_pct=1.0,
     )
 
     # Insert 3 shadow log rows for today
@@ -320,11 +360,17 @@ async def test_compute_daily_comparison_aggregates(db: aiosqlite.Connection) -> 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                pid, "extract", active_id, shadow_id,
+                pid,
+                "extract",
+                active_id,
+                shadow_id,
                 f"input_{i}",
                 json.dumps({"out": "same"}),
                 json.dumps({"out": "same"}),
-                100, 120, 0.01, 0.02,
+                100,
+                120,
+                0.01,
+                0.02,
                 f"{today}T10:00:00",
             ),
         )
@@ -342,19 +388,28 @@ async def test_compute_daily_comparison_aggregates(db: aiosqlite.Connection) -> 
 async def test_promote_shadow_swaps_active(db: aiosqlite.Connection) -> None:
     active_id = await _insert_prompt(db, site="extract", version="1.0", text="A", active=True)
     shadow_id = await _insert_prompt(
-        db, site="extract", version="2.0", text="S",
-        active=False, shadow=True, traffic_pct=0.5,
+        db,
+        site="extract",
+        version="2.0",
+        text="S",
+        active=False,
+        shadow=True,
+        traffic_pct=0.5,
     )
 
     await promote_shadow(db, site="extract", shadow_template_id=shadow_id)
 
     # Old active should now be inactive
-    cursor = await db.execute("SELECT active, shadow FROM prompt_templates WHERE id = ?", (active_id,))
+    cursor = await db.execute(
+        "SELECT active, shadow FROM prompt_templates WHERE id = ?", (active_id,)
+    )
     row = await cursor.fetchone()
     assert row["active"] == 0
 
     # New active should be the former shadow, with shadow flag cleared
-    cursor = await db.execute("SELECT active, shadow, shadow_traffic_pct FROM prompt_templates WHERE id = ?", (shadow_id,))
+    cursor = await db.execute(
+        "SELECT active, shadow, shadow_traffic_pct FROM prompt_templates WHERE id = ?", (shadow_id,)
+    )
     row = await cursor.fetchone()
     assert row["active"] == 1
     assert row["shadow"] == 0
@@ -407,6 +462,7 @@ def test_backup_and_restore_round_trip(tmp_path: Path) -> None:
     Skipped if age is not available.
     """
     import shutil
+
     if shutil.which("age") is None:
         pytest.skip("age binary not available")
     if shutil.which("age-keygen") is None:
@@ -431,13 +487,13 @@ def test_backup_and_restore_round_trip(tmp_path: Path) -> None:
     key_path = tmp_path / "age.key"
     result = subprocess.run(
         ["age-keygen", "-o", str(key_path)],
-        check=True, capture_output=True, text=True,
+        check=True,
+        capture_output=True,
+        text=True,
     )
     # Recipient public key is in stderr for age-keygen
     recipient = next(
-        line.split(": ")[1]
-        for line in result.stderr.splitlines()
-        if line.startswith("Public key:")
+        line.split(": ")[1] for line in result.stderr.splitlines() if line.startswith("Public key:")
     )
 
     dest_dir = tmp_path / "backups"
@@ -451,7 +507,9 @@ def test_backup_and_restore_round_trip(tmp_path: Path) -> None:
     # Run backup
     result = subprocess.run(
         ["bash", str(backup_sh), "test_persona"],
-        env=env, capture_output=True, text=True,
+        env=env,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, f"backup failed: {result.stderr}"
 
@@ -469,14 +527,18 @@ def test_backup_and_restore_round_trip(tmp_path: Path) -> None:
 
     result = subprocess.run(
         ["bash", str(restore_sh), str(artifacts[0]), "--force"],
-        env=restore_env, capture_output=True, text=True,
+        env=restore_env,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, f"restore failed: {result.stderr}\n{result.stdout}"
 
     # Verify restored DB has our data
     result = subprocess.run(
         ["sqlite3", str(restore_dir / "engine.db"), "SELECT x FROM t;"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert result.stdout.strip() == "42"
 
@@ -494,7 +556,9 @@ def test_backup_script_rejects_missing_env() -> None:
 
     result = subprocess.run(
         ["bash", str(backup_sh), "some_persona"],
-        env=env, capture_output=True, text=True,
+        env=env,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode != 0
     assert "MEMORY_ENGINE_BACKUP" in result.stderr
@@ -510,7 +574,8 @@ def test_drill_script_exists_and_executable() -> None:
     # Running without persona_slug should exit with usage error
     result = subprocess.run(
         ["bash", str(drill_sh)],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 2
     assert "Usage" in result.stderr

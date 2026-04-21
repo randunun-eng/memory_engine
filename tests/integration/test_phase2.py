@@ -103,8 +103,11 @@ async def test_event_promotes_to_working(db) -> None:
 
     dispatch = _make_dispatch()
     stats = await consolidation_pass(
-        db, dispatch, persona.id,
-        persona.private_key, persona.public_key_b64,
+        db,
+        dispatch,
+        persona.id,
+        persona.private_key,
+        persona.public_key_b64,
     )
 
     assert stats.events_entered >= 1
@@ -124,8 +127,11 @@ async def test_working_promotes_to_neuron(db) -> None:
 
     dispatch = _make_dispatch()
     stats = await consolidation_pass(
-        db, dispatch, persona.id,
-        persona.private_key, persona.public_key_b64,
+        db,
+        dispatch,
+        persona.id,
+        persona.private_key,
+        persona.public_key_b64,
     )
 
     assert stats.neurons_promoted >= 1
@@ -250,7 +256,9 @@ async def test_distinct_source_count_increments_per_distinct_source(db) -> None:
     # Instead, let's test the actual rule: same event cited again shouldn't bump distinct
     await _reinforce_existing(db, persona.id, [event1])
 
-    cursor = await db.execute("SELECT source_count, distinct_source_count FROM neurons WHERE id = ?", (neuron_id,))
+    cursor = await db.execute(
+        "SELECT source_count, distinct_source_count FROM neurons WHERE id = ?", (neuron_id,)
+    )
     row = await cursor.fetchone()
     # source_count incremented (repetition), distinct_source_count unchanged (same source)
     assert row["source_count"] >= 2
@@ -297,14 +305,16 @@ async def test_contradiction_detection_same_entity_pair(db) -> None:
     """Contradiction judge correctly identifies contradicting claims."""
     persona = await make_test_persona(db)
 
-    dispatch = _make_dispatch({
-        "judge_contradiction": {
-            "relation": "contradict",
-            "reason": "Job titles are mutually exclusive",
-            "newer": "b",
-            "confidence": 0.9,
+    dispatch = _make_dispatch(
+        {
+            "judge_contradiction": {
+                "relation": "contradict",
+                "reason": "Job titles are mutually exclusive",
+                "newer": "b",
+                "confidence": 0.9,
+            }
         }
-    })
+    )
 
     from memory_engine.core.contradiction import check_contradiction
 
@@ -383,11 +393,15 @@ async def test_quarantine_receives_rejected_candidates(db) -> None:
     )
 
     qid = await quarantine_candidate(
-        db, candidate, persona.id, reason="citation_unresolved",
+        db,
+        candidate,
+        persona.id,
+        reason="citation_unresolved",
     )
 
     cursor = await db.execute(
-        "SELECT * FROM quarantine_neurons WHERE id = ?", (qid,),
+        "SELECT * FROM quarantine_neurons WHERE id = ?",
+        (qid,),
     )
     row = await cursor.fetchone()
     assert row is not None
@@ -517,7 +531,10 @@ async def test_prune_enforces_capacity(db) -> None:
 
     # Set capacity to 5 — should prune the 5 lowest-activation entries
     pruned = await _prune_working_memory(
-        db, persona.id, activation_threshold=0.01, capacity=5,
+        db,
+        persona.id,
+        activation_threshold=0.01,
+        capacity=5,
     )
     assert pruned == 5, f"Expected 5 pruned to enforce capacity=5, got {pruned}"
 
@@ -530,4 +547,6 @@ async def test_prune_enforces_capacity(db) -> None:
     activations = [row["activation"] for row in rows]
     assert len(activations) == 5
     # Lowest remaining should be ~0.6 (6th of 10)
-    assert activations[0] >= 0.5, f"Lowest remaining activation {activations[0]} — wrong entries pruned"
+    assert activations[0] >= 0.5, (
+        f"Lowest remaining activation {activations[0]} — wrong entries pruned"
+    )

@@ -300,9 +300,7 @@ async def test_cross_counterparty_redaction_enforces_privacy(db: aiosqlite.Conne
     alice_id = await _make_counterparty(
         db, pid, external_ref="whatsapp:+1111", display_name="Alice"
     )
-    await _make_counterparty(
-        db, pid, external_ref="whatsapp:+2222", display_name="Bob Smith"
-    )
+    await _make_counterparty(db, pid, external_ref="whatsapp:+2222", display_name="Bob Smith")
 
     result = await approve_outbound(
         db,

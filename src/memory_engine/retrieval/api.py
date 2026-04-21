@@ -79,8 +79,13 @@ async def recall(
     vector_results: list[tuple[int, float]] = []
     if query_embedding is not None and embedder_rev is not None:
         vector_results = await vector_search(
-            conn, persona_id, query_embedding, embedder_rev, lens_filter,
-            top_k=50, as_of=as_of_str,
+            conn,
+            persona_id,
+            query_embedding,
+            embedder_rev,
+            lens_filter,
+            top_k=50,
+            as_of=as_of_str,
         )
 
     # Run graph stream (empty in Phase 1)
@@ -212,11 +217,13 @@ async def _load_citations(
         )
         erow = await ecursor.fetchone()
         if erow is not None:
-            citations.append(Citation(
-                event_id=erow["id"],
-                recorded_at=datetime.fromisoformat(erow["recorded_at"]).replace(tzinfo=UTC),
-                content_hash=erow["content_hash"],
-            ))
+            citations.append(
+                Citation(
+                    event_id=erow["id"],
+                    recorded_at=datetime.fromisoformat(erow["recorded_at"]).replace(tzinfo=UTC),
+                    content_hash=erow["content_hash"],
+                )
+            )
 
     return tuple(citations)
 

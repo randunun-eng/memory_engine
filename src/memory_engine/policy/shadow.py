@@ -47,10 +47,10 @@ class ShadowResult:
     """Result of a shadow-aware prompt execution."""
 
     active_output: Any
-    shadow_output: Any | None       # None if no shadow ran
+    shadow_output: Any | None  # None if no shadow ran
     active_template_id: int
     shadow_template_id: int | None
-    logged: bool                     # True if a shadow comparison was persisted
+    logged: bool  # True if a shadow comparison was persisted
 
 
 async def get_active_template(
@@ -217,12 +217,17 @@ async def _log_shadow_comparison(
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            persona_id, site, active_id, shadow_id,
+            persona_id,
+            site,
+            active_id,
+            shadow_id,
             _input_hash(inputs),
             json.dumps(active_out, default=str),
             json.dumps(shadow_out, default=str),
-            active_latency_ms, shadow_latency_ms,
-            active_cost_usd, shadow_cost_usd,
+            active_latency_ms,
+            shadow_latency_ms,
+            active_cost_usd,
+            shadow_cost_usd,
         ),
     )
     await conn.commit()
@@ -270,14 +275,16 @@ async def compute_daily_comparison(
     groups: dict[tuple[str, int, int], list[dict[str, Any]]] = {}
     for row in rows:
         key = (row["site"], row["active_template_id"], row["shadow_template_id"])
-        groups.setdefault(key, []).append({
-            "active_output": row["active_output"],
-            "shadow_output": row["shadow_output"],
-            "active_latency_ms": row["active_latency_ms"],
-            "shadow_latency_ms": row["shadow_latency_ms"],
-            "active_cost_usd": row["active_cost_usd"],
-            "shadow_cost_usd": row["shadow_cost_usd"],
-        })
+        groups.setdefault(key, []).append(
+            {
+                "active_output": row["active_output"],
+                "shadow_output": row["shadow_output"],
+                "active_latency_ms": row["active_latency_ms"],
+                "shadow_latency_ms": row["shadow_latency_ms"],
+                "active_cost_usd": row["active_cost_usd"],
+                "shadow_cost_usd": row["shadow_cost_usd"],
+            }
+        )
 
     results: list[dict[str, Any]] = []
     for (site, active_id, shadow_id), samples in groups.items():
@@ -286,9 +293,7 @@ async def compute_daily_comparison(
         shadow_lat = sum(s["shadow_latency_ms"] for s in samples) / n
         active_cost = sum(s["active_cost_usd"] for s in samples) / n
         shadow_cost = sum(s["shadow_cost_usd"] for s in samples) / n
-        agreement = sum(
-            1 for s in samples if s["active_output"] == s["shadow_output"]
-        ) / n
+        agreement = sum(1 for s in samples if s["active_output"] == s["shadow_output"]) / n
 
         metrics = {
             "sample_count": n,
@@ -314,13 +319,15 @@ async def compute_daily_comparison(
             (day, site, active_id, shadow_id, n, json.dumps(metrics)),
         )
 
-        results.append({
-            "day": day,
-            "site": site,
-            "active_template_id": active_id,
-            "shadow_template_id": shadow_id,
-            **metrics,
-        })
+        results.append(
+            {
+                "day": day,
+                "site": site,
+                "active_template_id": active_id,
+                "shadow_template_id": shadow_id,
+                **metrics,
+            }
+        )
 
     await conn.commit()
     return results

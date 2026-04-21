@@ -60,9 +60,7 @@ def test_all_16_rules_have_invariants() -> None:
     covered_rules = {inv.rule for inv in all_invariants.values()}
 
     for rule_num in range(1, 17):
-        assert rule_num in covered_rules, (
-            f"Rule {rule_num} has no registered invariant check"
-        )
+        assert rule_num in covered_rules, f"Rule {rule_num} has no registered invariant check"
 
 
 def test_at_least_3_rules_have_multiple_checks() -> None:
@@ -93,9 +91,7 @@ def test_critical_invariants_exist() -> None:
     critical_rules = {inv.rule for inv in critical}
 
     for rule in (1, 3, 4, 11, 12, 14, 15):
-        assert rule in critical_rules, (
-            f"Rule {rule} should have at least one critical invariant"
-        )
+        assert rule in critical_rules, f"Rule {rule} should have at least one critical invariant"
 
 
 # ---- Rule 1: trigger existence ----
@@ -162,19 +158,19 @@ async def test_rule12_synthetic_cross_counterparty_detected(db) -> None:
     )
     await db.commit()
 
-    cursor = await db.execute(
-        "SELECT id FROM counterparties WHERE external_ref = 'whatsapp:+1111'"
-    )
+    cursor = await db.execute("SELECT id FROM counterparties WHERE external_ref = 'whatsapp:+1111'")
     cp1 = (await cursor.fetchone())["id"]
-    cursor = await db.execute(
-        "SELECT id FROM counterparties WHERE external_ref = 'whatsapp:+2222'"
-    )
+    cursor = await db.execute("SELECT id FROM counterparties WHERE external_ref = 'whatsapp:+2222'")
     cp2 = (await cursor.fetchone())["id"]
 
     # Event from cp1
     event_id = await _append_test_event(
-        db, persona.id, persona.private_key, persona.public_key_b64,
-        counterparty_id=cp1, text="Alice's private info",
+        db,
+        persona.id,
+        persona.private_key,
+        persona.public_key_b64,
+        counterparty_id=cp1,
+        text="Alice's private info",
     )
 
     # Neuron assigned to cp2, citing cp1's event — the violation
@@ -212,7 +208,10 @@ async def test_rule14_no_citation_detected(db) -> None:
     """A neuron with empty source_event_ids triggers rule 14."""
     persona = await make_test_persona(db)
     event_id = await _append_test_event(
-        db, persona.id, persona.private_key, persona.public_key_b64,
+        db,
+        persona.id,
+        persona.private_key,
+        persona.public_key_b64,
     )
 
     # Insert valid neuron, then corrupt to empty citations (bypass CHECK)
@@ -273,7 +272,10 @@ async def test_rule15_distinct_exceeds_source_detected(db) -> None:
     """distinct_source_count > source_count is a critical violation."""
     persona = await make_test_persona(db)
     event_id = await _append_test_event(
-        db, persona.id, persona.private_key, persona.public_key_b64,
+        db,
+        persona.id,
+        persona.private_key,
+        persona.public_key_b64,
     )
 
     # CHECK constraint prevents distinct > source, so bypass it to simulate corruption
@@ -305,7 +307,10 @@ async def test_full_scan_on_valid_data_clean(db) -> None:
     """A well-formed database produces zero critical violations."""
     persona = await make_test_persona(db)
     event_id = await _append_test_event(
-        db, persona.id, persona.private_key, persona.public_key_b64,
+        db,
+        persona.id,
+        persona.private_key,
+        persona.public_key_b64,
     )
 
     # Insert a valid neuron

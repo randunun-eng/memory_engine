@@ -45,14 +45,10 @@ async def ingest_endpoint(req: IngestRequest) -> IngestResponse:
     conn = await connect()
     try:
         # 1. slug → persona_id
-        cursor = await conn.execute(
-            "SELECT id FROM personas WHERE slug = ?", (req.persona_slug,)
-        )
+        cursor = await conn.execute("SELECT id FROM personas WHERE slug = ?", (req.persona_slug,))
         row = await cursor.fetchone()
         if row is None:
-            raise HTTPException(
-                status_code=404, detail=f"Persona {req.persona_slug!r} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Persona {req.persona_slug!r} not found")
         persona_id = int(row["id"])
 
         # 2. external_ref → counterparty_id (lookup or create)
@@ -110,8 +106,6 @@ async def ingest_endpoint(req: IngestRequest) -> IngestResponse:
             sender_hint=req.sender_hint,
         )
 
-        return IngestResponse(
-            event_id=event.id, ingested_at=event.recorded_at.isoformat()
-        )
+        return IngestResponse(event_id=event.id, ingested_at=event.recorded_at.isoformat())
     finally:
         await conn.close()

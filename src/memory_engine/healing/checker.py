@@ -56,12 +56,14 @@ class InvariantChecker:
                 violations = await invariant.check(self._conn, self._persona_id)
             except Exception:
                 logger.exception("Invariant check %s raised an exception", name)
-                violations = [Violation(
-                    invariant_name=name,
-                    severity="warning",
-                    persona_id=self._persona_id,
-                    details=f"Check {name} raised an exception during scan",
-                )]
+                violations = [
+                    Violation(
+                        invariant_name=name,
+                        severity="warning",
+                        persona_id=self._persona_id,
+                        details=f"Check {name} raised an exception during scan",
+                    )
+                ]
 
             for v in violations:
                 all_violations.append(v)
@@ -107,9 +109,7 @@ class InvariantChecker:
             try:
                 violations = await invariant.check(self._conn, self._persona_id)
             except Exception:
-                logger.exception(
-                    "Critical invariant %s raised an exception", invariant.name
-                )
+                logger.exception("Critical invariant %s raised an exception", invariant.name)
                 continue
 
             for v in violations:

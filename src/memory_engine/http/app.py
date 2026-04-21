@@ -8,18 +8,6 @@ import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-# Configure root logging on module import so logger.info() calls in
-# memory_engine.* modules reach stdout under uvicorn. uvicorn's --log-level
-# only affects uvicorn's own loggers, not our named module loggers. Default
-# INFO; override via MEMORY_ENGINE_LOG_LEVEL env.
-_log_level = os.environ.get("MEMORY_ENGINE_LOG_LEVEL", "INFO").upper()
-logging.basicConfig(
-    level=_log_level,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    force=True,
-)
-logging.getLogger("memory_engine").setLevel(_log_level)
-
 from memory_engine.exceptions import (
     ConfigError,
     IdempotencyConflict,
@@ -32,6 +20,23 @@ from memory_engine.http.routes.mcp import router as mcp_router
 from memory_engine.http.routes.personas import router as personas_router
 from memory_engine.http.routes.recall import router as recall_router
 
+
+def _configure_logging() -> None:
+    """Configure root logging on module import so logger.info() calls in
+    memory_engine.* modules reach stdout under uvicorn. uvicorn's --log-level
+    only affects uvicorn's own loggers, not our named module loggers. Default
+    INFO; override via MEMORY_ENGINE_LOG_LEVEL env.
+    """
+    level = os.environ.get("MEMORY_ENGINE_LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        force=True,
+    )
+    logging.getLogger("memory_engine").setLevel(level)
+
+
+_configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -69,9 +74,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ConfigError)
     async def _config_error(_req: Request, exc: ConfigError) -> JSONResponse:
-        return JSONResponse(
-            status_code=400, content={"error": "config_error", "detail": str(exc)}
-        )
+        return JSONResponse(status_code=400, content={"error": "config_error", "detail": str(exc)})
 
     @app.exception_handler(HTTPException)
     async def _http_exc(_req: Request, exc: HTTPException) -> JSONResponse:

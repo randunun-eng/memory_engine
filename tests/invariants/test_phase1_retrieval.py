@@ -26,6 +26,7 @@ async def seeded_db(db):
 
 # ---- Rule 7: retrieval never writes neurons synchronously ----
 
+
 async def test_recall_never_writes_neurons_synchronously(seeded_db) -> None:
     """Rule 7: recall() is pure read. No neuron mutations during recall."""
     cursor = await seeded_db.execute("SELECT count(*) AS c FROM neurons")
@@ -33,8 +34,11 @@ async def test_recall_never_writes_neurons_synchronously(seeded_db) -> None:
 
     await recall(seeded_db, persona_id=1, query="anything", lens="self", top_k=5)
     await recall(
-        seeded_db, persona_id=1, query="Alex birthday",
-        lens="counterparty:whatsapp:+19175550101", top_k=5,
+        seeded_db,
+        persona_id=1,
+        query="Alex birthday",
+        lens="counterparty:whatsapp:+19175550101",
+        top_k=5,
     )
     await recall(seeded_db, persona_id=1, query="MPPT solar", lens="domain", top_k=5)
 
@@ -116,11 +120,13 @@ async def test_emit_trace_async_does_not_block_caller(seeded_db, monkeypatch) ->
 
 # ---- Rule 12: cross-counterparty isolation ----
 
+
 async def test_cross_counterparty_lens_cannot_leak_across(seeded_db) -> None:
     """Rule 12: counterparty:alice lens must never return Bob's neurons."""
     # Query with Alex's lens — should never see Priya's neurons
     results = await recall(
-        seeded_db, persona_id=1,
+        seeded_db,
+        persona_id=1,
         query="machine learning data science work",
         lens="counterparty:whatsapp:+19175550101",
         top_k=20,
@@ -144,10 +150,12 @@ async def test_retrieval_trace_event_content_hash_stable(seeded_db) -> None:
 
 # ---- T3-early: cross-counterparty isolation canary tests ----
 
+
 async def test_T3_counterparty_A_query_does_not_return_counterparty_B_neurons(seeded_db) -> None:
     """T3 canary: Alex query must not return Priya or Solar crew neurons."""
     results = await recall(
-        seeded_db, persona_id=1,
+        seeded_db,
+        persona_id=1,
         query="project working research team",
         lens="counterparty:whatsapp:+19175550101",
         top_k=20,
@@ -163,7 +171,8 @@ async def test_T3_counterparty_A_query_does_not_return_counterparty_B_neurons(se
 async def test_T3_self_lens_excludes_all_counterparty_facts(seeded_db) -> None:
     """T3 canary: self lens returns zero counterparty_facts."""
     results = await recall(
-        seeded_db, persona_id=1,
+        seeded_db,
+        persona_id=1,
         query="work project team birthday",
         lens="self",
         top_k=20,
@@ -177,7 +186,8 @@ async def test_T3_self_lens_excludes_all_counterparty_facts(seeded_db) -> None:
 async def test_T3_domain_lens_excludes_all_counterparty_facts(seeded_db) -> None:
     """T3 canary: domain lens returns zero counterparty_facts."""
     results = await recall(
-        seeded_db, persona_id=1,
+        seeded_db,
+        persona_id=1,
         query="algorithm software vector search",
         lens="domain",
         top_k=20,
@@ -191,7 +201,8 @@ async def test_T3_domain_lens_excludes_all_counterparty_facts(seeded_db) -> None
 async def test_T3_counterparty_lens_includes_domain_facts(seeded_db) -> None:
     """T3 canary: counterparty lens includes domain_facts alongside counterparty_facts."""
     results = await recall(
-        seeded_db, persona_id=1,
+        seeded_db,
+        persona_id=1,
         query="MPPT solar charge controller algorithm",
         lens="counterparty:whatsapp-group:120363solar@g.us",
         top_k=20,
@@ -204,7 +215,8 @@ async def test_T3_counterparty_lens_includes_domain_facts(seeded_db) -> None:
 async def test_T3_unknown_counterparty_returns_empty_not_error(seeded_db) -> None:
     """T3 canary: querying a non-existent counterparty returns empty, not error."""
     results = await recall(
-        seeded_db, persona_id=1,
+        seeded_db,
+        persona_id=1,
         query="anything at all",
         lens="counterparty:whatsapp:+19175559999",
         top_k=10,

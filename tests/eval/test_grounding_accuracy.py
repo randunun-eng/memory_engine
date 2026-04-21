@@ -41,11 +41,13 @@ def _make_grounding_dispatch(verdict: str) -> PolicyDispatch:
     """Build a dispatch that returns a fixed grounding judge verdict."""
 
     async def mock_llm(model: str, prompt: str, temperature: float) -> str:
-        return json.dumps({
-            "verdict": verdict,
-            "reason": "mock judge",
-            "confidence": 0.9,
-        })
+        return json.dumps(
+            {
+                "verdict": verdict,
+                "reason": "mock judge",
+                "confidence": 0.9,
+            }
+        )
 
     registry = PromptRegistry()
     registry.load_from_directory()
@@ -90,8 +92,8 @@ async def test_grounding_accuracy_on_50_fixtures(db) -> None:
     assert len(fixtures) == 50, f"Expected 50 fixtures, got {len(fixtures)}"
 
     results = {
-        "true_positive": 0,   # grounded, gate accepted
-        "true_negative": 0,   # ungrounded, gate rejected
+        "true_positive": 0,  # grounded, gate accepted
+        "true_negative": 0,  # ungrounded, gate rejected
         "false_positive": 0,  # ungrounded, gate accepted (hallucination leak)
         "false_negative": 0,  # grounded, gate rejected (over-filtering)
     }
@@ -161,16 +163,20 @@ async def test_grounding_accuracy_on_50_fixtures(db) -> None:
     )
 
     # Print results for the DRIFT.md record
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("GROUNDING GATE ACCURACY — 50 fixtures, threshold=0.40")
-    print(f"{'='*60}")
-    print(f"Accuracy:  {accuracy:.1%} ({results['true_positive'] + results['true_negative']}/{total})")
+    print(f"{'=' * 60}")
+    print(
+        f"Accuracy:  {accuracy:.1%} ({results['true_positive'] + results['true_negative']}/{total})"
+    )
     print(f"Precision: {precision:.1%} (of accepted, how many truly grounded)")
     print(f"Recall:    {recall:.1%} (of grounded, how many accepted)")
     print("")
-    print(f"TP={results['true_positive']} TN={results['true_negative']} "
-          f"FP={results['false_positive']} FN={results['false_negative']}")
-    print(f"{'='*60}")
+    print(
+        f"TP={results['true_positive']} TN={results['true_negative']} "
+        f"FP={results['false_positive']} FN={results['false_negative']}"
+    )
+    print(f"{'=' * 60}")
 
     # Store for DRIFT.md recording
     # The acceptance criterion from CLAUDE.md §9 Phase 2: >70% citation-ground-truth accuracy
@@ -201,9 +207,7 @@ async def test_grounding_accuracy_current_stack(db) -> None:
     fixtures = _load_fixtures()
     assert len(fixtures) == 50, f"Expected 50 fixtures, got {len(fixtures)}"
 
-    model = SentenceTransformer(
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    )
+    model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
     def embed_fn(text: str) -> list[float]:
         vec = model.encode(text, normalize_embeddings=True)
@@ -277,20 +281,22 @@ async def test_grounding_accuracy_current_stack(db) -> None:
     print("  gate:     per-event-max similarity")
     print("  threshold: 0.25")
     print(f"{'=' * 60}")
-    print(f"Accuracy:  {accuracy:.1%} ({results['true_positive'] + results['true_negative']}/{total})")
+    print(
+        f"Accuracy:  {accuracy:.1%} ({results['true_positive'] + results['true_negative']}/{total})"
+    )
     print(f"Precision: {precision:.1%} (of accepted, how many truly grounded)")
     print(f"Recall:    {recall:.1%} (of grounded, how many accepted)")
     print("")
-    print(f"TP={results['true_positive']} TN={results['true_negative']} "
-          f"FP={results['false_positive']} FN={results['false_negative']}")
+    print(
+        f"TP={results['true_positive']} TN={results['true_negative']} "
+        f"FP={results['false_positive']} FN={results['false_negative']}"
+    )
     print(f"{'=' * 60}")
     print("Phase 2 baseline (BoW + concat + 0.40): 72% accuracy")
     print(f"Current stack delta: {(accuracy - 0.72) * 100:+.1f}pp")
     print(f"{'=' * 60}")
 
-    assert accuracy >= 0.50, (
-        f"Current-stack accuracy {accuracy:.1%} below 50% — gate failed."
-    )
+    assert accuracy >= 0.50, f"Current-stack accuracy {accuracy:.1%} below 50% — gate failed."
 
 
 async def test_grounding_full_pipeline_with_judge(db) -> None:
@@ -324,9 +330,7 @@ async def test_grounding_full_pipeline_with_judge(db) -> None:
     persona = await make_test_persona(db)
     fixtures = _load_fixtures()
 
-    model = SentenceTransformer(
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    )
+    model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
     def embed_fn(text: str) -> list[float]:
         vec = model.encode(text, normalize_embeddings=True)
@@ -337,7 +341,10 @@ async def test_grounding_full_pipeline_with_judge(db) -> None:
     cache = PromptCache()
     backend = GoogleAIStudioBackend(api_key=api_key, max_rpm=10, warn_rpm=8)
     dispatch = PolicyDispatch(
-        registry=registry, llm_backend=backend, cache=cache, model="gemini-2.5-flash",
+        registry=registry,
+        llm_backend=backend,
+        cache=cache,
+        model="gemini-2.5-flash",
     )
 
     results = {
@@ -356,9 +363,14 @@ async def test_grounding_full_pipeline_with_judge(db) -> None:
             content_hash = compute_content_hash(payload)
             sig = sign(persona.private_key, canonical_signing_message(persona.id, content_hash))
             event = await append_event(
-                db, persona_id=persona.id, counterparty_id=None,
-                event_type="message_in", scope="private", payload=payload,
-                signature=sig, public_key_b64=persona.public_key_b64,
+                db,
+                persona_id=persona.id,
+                counterparty_id=None,
+                event_type="message_in",
+                scope="private",
+                payload=payload,
+                signature=sig,
+                public_key_b64=persona.public_key_b64,
             )
 
             # Force target_tier=semantic so the LLM judge activates.
@@ -373,16 +385,25 @@ async def test_grounding_full_pipeline_with_judge(db) -> None:
 
             # First: similarity-only (what our prior test measured)
             sim_only = await grounding_gate(
-                candidate, events=[event], conn=db, persona_id=persona.id,
-                embed_fn=embed_fn, similarity_threshold=0.60,
+                candidate,
+                events=[event],
+                conn=db,
+                persona_id=persona.id,
+                embed_fn=embed_fn,
+                similarity_threshold=0.60,
                 llm_judge_tiers=[],
             )
             sim_accepted = sim_only.verdict == Verdict.ACCEPT
 
             # Second: full pipeline (similarity + judge)
             full = await grounding_gate(
-                candidate, events=[event], conn=db, persona_id=persona.id,
-                dispatch=dispatch, embed_fn=embed_fn, similarity_threshold=0.60,
+                candidate,
+                events=[event],
+                conn=db,
+                persona_id=persona.id,
+                dispatch=dispatch,
+                embed_fn=embed_fn,
+                similarity_threshold=0.60,
                 llm_judge_tiers=["semantic", "procedural"],
             )
             full_accepted = full.verdict == Verdict.ACCEPT
@@ -419,15 +440,19 @@ async def test_grounding_full_pipeline_with_judge(db) -> None:
     print("  threshold: 0.60 (embedding)")
     print("  judge:     gemini-2.5-flash (tier=semantic)")
     print(f"{'=' * 60}")
-    print(f"Accuracy:  {accuracy:.1%} ({results['true_positive'] + results['true_negative']}/{total})")
+    print(
+        f"Accuracy:  {accuracy:.1%} ({results['true_positive'] + results['true_negative']}/{total})"
+    )
     print(f"Precision: {precision:.1%}")
     print(f"Recall:    {recall:.1%}")
     print(f"Judge flipped {judge_flipped_to_reject} similarity-accepts → rejects")
-    print(f"TP={results['true_positive']} TN={results['true_negative']} "
-          f"FP={results['false_positive']} FN={results['false_negative']}")
+    print(
+        f"TP={results['true_positive']} TN={results['true_negative']} "
+        f"FP={results['false_positive']} FN={results['false_negative']}"
+    )
     print(f"{'=' * 60}")
-    print(f"Similarity-only baseline (from test_grounding_accuracy_current_stack):")
-    print(f"  60% @ threshold 0.25, 88% @ threshold 0.60")
+    print("Similarity-only baseline (from test_grounding_accuracy_current_stack):")
+    print("  60% @ threshold 0.25, 88% @ threshold 0.60")
     print(f"{'=' * 60}")
 
     assert accuracy >= 0.50, f"Full-pipeline accuracy {accuracy:.1%} below 50%"
@@ -446,9 +471,7 @@ async def test_grounding_threshold_sweep(db) -> None:
     persona = await make_test_persona(db)
     fixtures = _load_fixtures()
 
-    model = SentenceTransformer(
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    )
+    model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
     def embed_fn(text: str) -> list[float]:
         vec = model.encode(text, normalize_embeddings=True)
@@ -463,10 +486,15 @@ async def test_grounding_threshold_sweep(db) -> None:
         payload = {"text": fixture["event_text"]}
         content_hash = compute_content_hash(payload)
         sig = sign(persona.private_key, canonical_signing_message(persona.id, content_hash))
-        event = await append_event(
-            db, persona_id=persona.id, counterparty_id=None,
-            event_type="message_in", scope="private", payload=payload,
-            signature=sig, public_key_b64=persona.public_key_b64,
+        await append_event(
+            db,
+            persona_id=persona.id,
+            counterparty_id=None,
+            event_type="message_in",
+            scope="private",
+            payload=payload,
+            signature=sig,
+            public_key_b64=persona.public_key_b64,
         )
         cand_vec = embed_fn(fixture["candidate"])
         ev_vec = embed_fn(fixture["event_text"])
@@ -491,10 +519,12 @@ async def test_grounding_threshold_sweep(db) -> None:
         if acc > best[1]:
             best = (t, acc)
             marker = " <-- best so far"
-        print(f"{t:>10.2f} {acc:>9.1%} {prec:>10.1%} {rec:>7.1%}   {tp:>2}/{tn:>2}/{fp:>2}/{fn:>2}{marker}")
+        print(
+            f"{t:>10.2f} {acc:>9.1%} {prec:>10.1%} {rec:>7.1%}   {tp:>2}/{tn:>2}/{fp:>2}/{fn:>2}{marker}"
+        )
     print(f"{'=' * 70}")
     print(f"Best threshold: {best[0]:.2f} → accuracy {best[1]:.1%}")
-    print(f"Phase 2 baseline was 0.40 BoW → 72%.")
+    print("Phase 2 baseline was 0.40 BoW → 72%.")
     print(f"{'=' * 70}")
 
     # Dist of max-sim scores by label
@@ -502,7 +532,11 @@ async def test_grounding_threshold_sweep(db) -> None:
     ungrounded_sims = [s for s, g in scored if not g]
     gm = sum(grounded_sims) / len(grounded_sims) if grounded_sims else 0
     um = sum(ungrounded_sims) / len(ungrounded_sims) if ungrounded_sims else 0
-    print(f"grounded   sims: mean {gm:.3f} min {min(grounded_sims):.3f} max {max(grounded_sims):.3f}")
-    print(f"ungrounded sims: mean {um:.3f} min {min(ungrounded_sims):.3f} max {max(ungrounded_sims):.3f}")
-    print(f"separation (grounded mean − ungrounded mean): {gm - um:.3f}")
+    print(
+        f"grounded   sims: mean {gm:.3f} min {min(grounded_sims):.3f} max {max(grounded_sims):.3f}"
+    )
+    print(
+        f"ungrounded sims: mean {um:.3f} min {min(ungrounded_sims):.3f} max {max(ungrounded_sims):.3f}"
+    )
+    print(f"separation (grounded mean - ungrounded mean): {gm - um:.3f}")
     print(f"{'=' * 70}")

@@ -39,24 +39,16 @@ class RedactionResult:
 # ---- Pattern definitions ----
 
 # Email addresses
-_EMAIL_RE = re.compile(
-    r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-)
+_EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
 
 # Phone numbers (international formats)
-_PHONE_RE = re.compile(
-    r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b"
-)
+_PHONE_RE = re.compile(r"(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}\b")
 
 # SSN-like patterns (US format)
-_SSN_RE = re.compile(
-    r"\b\d{3}-\d{2}-\d{4}\b"
-)
+_SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
 
 # API keys / tokens (common patterns)
-_SECRET_RE = re.compile(
-    r"\b(?:sk-[a-zA-Z0-9]{20,}|Bearer\s+[a-zA-Z0-9._-]{20,})\b"
-)
+_SECRET_RE = re.compile(r"\b(?:sk-[a-zA-Z0-9]{20,}|Bearer\s+[a-zA-Z0-9._-]{20,})\b")
 
 
 def redact_pii(

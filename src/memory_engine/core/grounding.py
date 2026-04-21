@@ -156,14 +156,16 @@ async def quarantine_candidate(
 
     Returns the quarantine row id.
     """
-    candidate_json = json.dumps({
-        "content": candidate.content,
-        "confidence": candidate.confidence,
-        "kind": candidate.kind,
-        "target_tier": candidate.target_tier,
-        "t_valid_start": candidate.t_valid_start,
-        "source_span": candidate.source_span,
-    })
+    candidate_json = json.dumps(
+        {
+            "content": candidate.content,
+            "confidence": candidate.confidence,
+            "kind": candidate.kind,
+            "target_tier": candidate.target_tier,
+            "t_valid_start": candidate.t_valid_start,
+            "source_span": candidate.source_span,
+        }
+    )
     source_ids_json = json.dumps(candidate.source_event_ids)
 
     cursor = await conn.execute(

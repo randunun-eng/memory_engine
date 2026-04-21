@@ -101,6 +101,7 @@ def get_critical() -> list[Invariant]:
 # Rule 1: Events are immutable
 # ========================================================================
 
+
 @register(rule=1, name="events_immutable_triggers_exist", severity="critical")
 async def _rule1_triggers_exist(
     conn: aiosqlite.Connection, persona_id: int | None
@@ -118,18 +119,21 @@ async def _rule1_triggers_exist(
         )
         row = await cursor.fetchone()
         if row is None:
-            violations.append(Violation(
-                invariant_name="events_immutable_triggers_exist",
-                severity="critical",
-                persona_id=None,
-                details=f"Immutability trigger {trigger_name!r} missing from events table",
-            ))
+            violations.append(
+                Violation(
+                    invariant_name="events_immutable_triggers_exist",
+                    severity="critical",
+                    persona_id=None,
+                    details=f"Immutability trigger {trigger_name!r} missing from events table",
+                )
+            )
     return violations
 
 
 # ========================================================================
 # Rule 2: Derived state is disposable (neurons rebuildable from events)
 # ========================================================================
+
 
 @register(rule=2, name="neurons_have_source_events", severity="warning")
 async def _rule2_neurons_have_sources(
@@ -155,22 +159,23 @@ async def _rule2_neurons_have_sources(
     for row in rows:
         event_ids = json.loads(row["source_event_ids"])
         for eid in event_ids:
-            ev_cursor = await conn.execute(
-                "SELECT 1 FROM events WHERE id = ?", (eid,)
-            )
+            ev_cursor = await conn.execute("SELECT 1 FROM events WHERE id = ?", (eid,))
             if await ev_cursor.fetchone() is None:
-                violations.append(Violation(
-                    invariant_name="neurons_have_source_events",
-                    severity="warning",
-                    persona_id=row["persona_id"],
-                    details=f"Neuron {row['id']} cites event {eid} which does not exist",
-                ))
+                violations.append(
+                    Violation(
+                        invariant_name="neurons_have_source_events",
+                        severity="warning",
+                        persona_id=row["persona_id"],
+                        details=f"Neuron {row['id']} cites event {eid} which does not exist",
+                    )
+                )
     return violations
 
 
 # ========================================================================
 # Rule 3: Scope tightening is automatic; loosening is explicit
 # ========================================================================
+
 
 @register(rule=3, name="no_implicit_scope_loosening", severity="critical")
 async def _rule3_scope_loosening(
@@ -187,23 +192,24 @@ async def _rule3_scope_loosening(
         where += " AND persona_id = ?"
         params.append(persona_id)
 
-    cursor = await conn.execute(
-        f"SELECT id, persona_id, scope FROM events {where}", params
-    )
+    cursor = await conn.execute(f"SELECT id, persona_id, scope FROM events {where}", params)
     rows = await cursor.fetchall()
     for row in rows:
-        violations.append(Violation(
-            invariant_name="no_implicit_scope_loosening",
-            severity="critical",
-            persona_id=row["persona_id"],
-            details=f"Event {row['id']} has invalid scope {row['scope']!r}",
-        ))
+        violations.append(
+            Violation(
+                invariant_name="no_implicit_scope_loosening",
+                severity="critical",
+                persona_id=row["persona_id"],
+                details=f"Event {row['id']} has invalid scope {row['scope']!r}",
+            )
+        )
     return violations
 
 
 # ========================================================================
 # Rule 4: Secrets never appear in embeddings (vault references only)
 # ========================================================================
+
 
 @register(rule=4, name="no_secrets_in_neuron_content", severity="critical")
 async def _rule4_no_secrets_in_content(
@@ -221,21 +227,21 @@ async def _rule4_no_secrets_in_content(
         where += " AND persona_id = ?"
         params.append(persona_id)
 
-    cursor = await conn.execute(
-        f"SELECT id, persona_id, content FROM neurons {where}", params
-    )
+    cursor = await conn.execute(f"SELECT id, persona_id, content FROM neurons {where}", params)
     rows = await cursor.fetchall()
     for row in rows:
         content = row["content"].lower()
         # Heuristic patterns — not exhaustive, but catches common cases
         for pattern in ("password:", "api_key:", "secret:", "token:", "bearer "):
             if pattern in content:
-                violations.append(Violation(
-                    invariant_name="no_secrets_in_neuron_content",
-                    severity="critical",
-                    persona_id=row["persona_id"],
-                    details=f"Neuron {row['id']} may contain a secret (matched {pattern!r})",
-                ))
+                violations.append(
+                    Violation(
+                        invariant_name="no_secrets_in_neuron_content",
+                        severity="critical",
+                        persona_id=row["persona_id"],
+                        details=f"Neuron {row['id']} may contain a secret (matched {pattern!r})",
+                    )
+                )
                 break
     return violations
 
@@ -243,6 +249,7 @@ async def _rule4_no_secrets_in_content(
 # ========================================================================
 # Rule 5: Invariants are declarative (meta-rule — enforced by this file)
 # ========================================================================
+
 
 @register(rule=5, name="all_rules_have_invariants", severity="warning")
 async def _rule5_all_rules_covered(
@@ -253,12 +260,14 @@ async def _rule5_all_rules_covered(
     covered_rules = {inv.rule for inv in _registry.values()}
     for rule_num in range(1, 17):
         if rule_num not in covered_rules:
-            violations.append(Violation(
-                invariant_name="all_rules_have_invariants",
-                severity="warning",
-                persona_id=None,
-                details=f"Rule {rule_num} has no registered invariant check",
-            ))
+            violations.append(
+                Violation(
+                    invariant_name="all_rules_have_invariants",
+                    severity="warning",
+                    persona_id=None,
+                    details=f"Rule {rule_num} has no registered invariant check",
+                )
+            )
     return violations
 
 
@@ -266,10 +275,9 @@ async def _rule5_all_rules_covered(
 # Rule 6: Provenance on everything
 # ========================================================================
 
+
 @register(rule=6, name="neurons_have_provenance", severity="warning")
-async def _rule6_provenance(
-    conn: aiosqlite.Connection, persona_id: int | None
-) -> list[Violation]:
+async def _rule6_provenance(conn: aiosqlite.Connection, persona_id: int | None) -> list[Violation]:
     """Every active neuron must have non-empty source_event_ids."""
     violations = []
     where = "WHERE superseded_at IS NULL"
@@ -290,18 +298,21 @@ async def _rule6_provenance(
     )
     rows = await cursor.fetchall()
     for row in rows:
-        violations.append(Violation(
-            invariant_name="neurons_have_provenance",
-            severity="warning",
-            persona_id=row["persona_id"],
-            details=f"Neuron {row['id']} has no provenance (empty source_event_ids)",
-        ))
+        violations.append(
+            Violation(
+                invariant_name="neurons_have_provenance",
+                severity="warning",
+                persona_id=row["persona_id"],
+                details=f"Neuron {row['id']} has no provenance (empty source_event_ids)",
+            )
+        )
     return violations
 
 
 # ========================================================================
 # Rule 7: Retrieval never writes synchronously
 # ========================================================================
+
 
 @register(rule=7, name="retrieval_trace_is_async", severity="warning")
 async def _rule7_retrieval_async(
@@ -322,6 +333,7 @@ async def _rule7_retrieval_async(
 # ========================================================================
 # Rule 8: Every neuron mutation emits an event
 # ========================================================================
+
 
 @register(rule=8, name="neuron_mutations_have_events", severity="warning")
 async def _rule8_mutation_events(
@@ -351,18 +363,21 @@ async def _rule8_mutation_events(
             (row["persona_id"], f'%"old_neuron_id": {row["id"]}%'),
         )
         if await ev_cursor.fetchone() is None:
-            violations.append(Violation(
-                invariant_name="neuron_mutations_have_events",
-                severity="warning",
-                persona_id=row["persona_id"],
-                details=f"Neuron {row['id']} superseded but no supersession event found",
-            ))
+            violations.append(
+                Violation(
+                    invariant_name="neuron_mutations_have_events",
+                    severity="warning",
+                    persona_id=row["persona_id"],
+                    details=f"Neuron {row['id']} superseded but no supersession event found",
+                )
+            )
     return violations
 
 
 # ========================================================================
 # Rule 9: Single writer per table
 # ========================================================================
+
 
 @register(rule=9, name="single_writer_discipline", severity="warning")
 async def _rule9_single_writer(
@@ -375,18 +390,21 @@ async def _rule9_single_writer(
     cursor = await conn.execute("PRAGMA journal_mode")
     row = await cursor.fetchone()
     if row is None or row[0] != "wal":
-        return [Violation(
-            invariant_name="single_writer_discipline",
-            severity="warning",
-            persona_id=None,
-            details=f"DB not in WAL mode (got {row[0] if row else 'unknown'})",
-        )]
+        return [
+            Violation(
+                invariant_name="single_writer_discipline",
+                severity="warning",
+                persona_id=None,
+                details=f"DB not in WAL mode (got {row[0] if row else 'unknown'})",
+            )
+        ]
     return []
 
 
 # ========================================================================
 # Rule 10: Events are never truncated by default
 # ========================================================================
+
 
 @register(rule=10, name="event_count_monotonic", severity="warning")
 async def _rule10_no_truncation(
@@ -403,9 +421,7 @@ async def _rule10_no_truncation(
         where = "WHERE persona_id = ?"
         params.append(persona_id)
 
-    cursor = await conn.execute(
-        f"SELECT count(*) as c, max(id) as m FROM events {where}", params
-    )
+    cursor = await conn.execute(f"SELECT count(*) as c, max(id) as m FROM events {where}", params)
     row = await cursor.fetchone()
     if row is None:
         return []
@@ -414,18 +430,21 @@ async def _rule10_no_truncation(
     if max_id is not None and count < max_id:
         # Gap between count and max id suggests deletions
         gap = max_id - count
-        return [Violation(
-            invariant_name="event_count_monotonic",
-            severity="warning",
-            persona_id=persona_id,
-            details=f"Event count ({count}) < max id ({max_id}): {gap} events may have been deleted",
-        )]
+        return [
+            Violation(
+                invariant_name="event_count_monotonic",
+                severity="warning",
+                persona_id=persona_id,
+                details=f"Event count ({count}) < max id ({max_id}): {gap} events may have been deleted",
+            )
+        ]
     return []
 
 
 # ========================================================================
 # Rule 11: Identity documents are authoritative, not derived
 # ========================================================================
+
 
 @register(rule=11, name="identity_doc_not_llm_modified", severity="critical")
 async def _rule11_identity_authority(
@@ -443,19 +462,19 @@ async def _rule11_identity_authority(
         where += " AND persona_id = ?"
         params.append(persona_id)
 
-    cursor = await conn.execute(
-        f"SELECT id, persona_id, payload FROM events {where}", params
-    )
+    cursor = await conn.execute(f"SELECT id, persona_id, payload FROM events {where}", params)
     rows = await cursor.fetchall()
     for row in rows:
         payload = json.loads(row["payload"])
         if payload.get("action") == "identity_modified" and not payload.get("signed_by_human"):
-            return [Violation(
-                invariant_name="identity_doc_not_llm_modified",
-                severity="critical",
-                persona_id=row["persona_id"],
-                details=f"Event {row['id']} modified identity without human signature",
-            )]
+            return [
+                Violation(
+                    invariant_name="identity_doc_not_llm_modified",
+                    severity="critical",
+                    persona_id=row["persona_id"],
+                    details=f"Event {row['id']} modified identity without human signature",
+                )
+            ]
     return []
 
 
@@ -463,6 +482,7 @@ async def _rule11_identity_authority(
 # Rule 12: Cross-counterparty retrieval is structurally forbidden
 # Multiple checks — this rule has the largest attack surface.
 # ========================================================================
+
 
 @register(rule=12, name="no_cross_counterparty_neurons", severity="critical")
 async def _rule12_no_cross_cp_neurons(
@@ -488,8 +508,13 @@ async def _rule12_no_cross_cp_neurons(
                 "SELECT counterparty_id FROM events WHERE id = ?", (eid,)
             )
             ev_row = await ev_cursor.fetchone()
-            if ev_row is not None and ev_row["counterparty_id"] is not None and ev_row["counterparty_id"] != row["counterparty_id"]:
-                    violations.append(Violation(
+            if (
+                ev_row is not None
+                and ev_row["counterparty_id"] is not None
+                and ev_row["counterparty_id"] != row["counterparty_id"]
+            ):
+                violations.append(
+                    Violation(
                         invariant_name="no_cross_counterparty_neurons",
                         severity="critical",
                         persona_id=row["persona_id"],
@@ -498,7 +523,8 @@ async def _rule12_no_cross_cp_neurons(
                             f"cites event {eid} (cp={ev_row['counterparty_id']}) — "
                             f"cross-counterparty leak"
                         ),
-                    ))
+                    )
+                )
     return violations
 
 
@@ -513,9 +539,7 @@ async def _rule12_cp_fact_has_cp(
         where += " AND persona_id = ?"
         params.append(persona_id)
 
-    cursor = await conn.execute(
-        f"SELECT id, persona_id FROM neurons {where}", params
-    )
+    cursor = await conn.execute(f"SELECT id, persona_id FROM neurons {where}", params)
     rows = await cursor.fetchall()
     return [
         Violation(
@@ -561,6 +585,7 @@ async def _rule12_self_domain_no_cp(
 # Rule 13: Pillar conflict hierarchy (privacy > counterparty > persona > factual)
 # ========================================================================
 
+
 @register(rule=13, name="pillar_hierarchy_respected", severity="warning")
 async def _rule13_pillar_hierarchy(
     conn: aiosqlite.Connection, persona_id: int | None
@@ -579,6 +604,7 @@ async def _rule13_pillar_hierarchy(
 # ========================================================================
 # Rule 14: Every neuron cites at least one specific source event
 # ========================================================================
+
 
 @register(rule=14, name="neuron_citation_required", severity="critical")
 async def _rule14_citation_required(
@@ -632,18 +658,21 @@ async def _rule14_citations_resolve(
         for eid in json.loads(row["source_event_ids"]):
             ev_cursor = await conn.execute("SELECT 1 FROM events WHERE id = ?", (eid,))
             if await ev_cursor.fetchone() is None:
-                violations.append(Violation(
-                    invariant_name="neuron_citations_resolve",
-                    severity="warning",
-                    persona_id=row["persona_id"],
-                    details=f"Neuron {row['id']} cites non-existent event {eid}",
-                ))
+                violations.append(
+                    Violation(
+                        invariant_name="neuron_citations_resolve",
+                        severity="warning",
+                        persona_id=row["persona_id"],
+                        details=f"Neuron {row['id']} cites non-existent event {eid}",
+                    )
+                )
     return violations
 
 
 # ========================================================================
 # Rule 15: Retrieval ranking uses distinct_source_count, not source_count
 # ========================================================================
+
 
 @register(rule=15, name="distinct_count_invariant", severity="critical")
 async def _rule15_distinct_count(
@@ -695,21 +724,24 @@ async def _rule15_distinct_matches_actual(
     for row in rows:
         unique_ids = len(set(json.loads(row["source_event_ids"])))
         if unique_ids != row["distinct_source_count"]:
-            violations.append(Violation(
-                invariant_name="distinct_count_matches_unique_sources",
-                severity="warning",
-                persona_id=row["persona_id"],
-                details=(
-                    f"Neuron {row['id']}: distinct_source_count={row['distinct_source_count']} "
-                    f"but actual unique source IDs={unique_ids}"
-                ),
-            ))
+            violations.append(
+                Violation(
+                    invariant_name="distinct_count_matches_unique_sources",
+                    severity="warning",
+                    persona_id=row["persona_id"],
+                    details=(
+                        f"Neuron {row['id']}: distinct_source_count={row['distinct_source_count']} "
+                        f"but actual unique source IDs={unique_ids}"
+                    ),
+                )
+            )
     return violations
 
 
 # ========================================================================
 # Rule 16: Validity-time fields are never fabricated
 # ========================================================================
+
 
 @register(rule=16, name="validity_times_not_fabricated", severity="warning")
 async def _rule16_validity_not_fabricated(
@@ -737,13 +769,15 @@ async def _rule16_validity_not_fabricated(
     )
     rows = await cursor.fetchall()
     for row in rows:
-        violations.append(Violation(
-            invariant_name="validity_times_not_fabricated",
-            severity="warning",
-            persona_id=row["persona_id"],
-            details=(
-                f"Neuron {row['id']}: t_valid_start ({row['t_valid_start']}) "
-                f"≈ recorded_at ({row['recorded_at']}) — may be fabricated"
-            ),
-        ))
+        violations.append(
+            Violation(
+                invariant_name="validity_times_not_fabricated",
+                severity="warning",
+                persona_id=row["persona_id"],
+                details=(
+                    f"Neuron {row['id']}: t_valid_start ({row['t_valid_start']}) "
+                    f"≈ recorded_at ({row['recorded_at']}) — may be fabricated"
+                ),
+            )
+        )
     return violations

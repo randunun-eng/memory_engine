@@ -101,8 +101,10 @@ async def _seed_corpus(db, persona, embed_fn) -> dict[str, int]:
                 (neuron_id, json.dumps(list(vec))),
             )
             await db.commit()
-        except Exception:  # noqa: BLE001 — sqlite-vec may not be available in test env
-            pass
+        except Exception as e:  # sqlite-vec may not be loaded in test env
+            import logging as _logging
+
+            _logging.getLogger(__name__).debug("neurons_vec skipped: %s", e)
 
     return id_map
 
@@ -156,9 +158,7 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
     """Compute MRR@10 and P@5 on the frozen seed corpus."""
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(
-        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    )
+    model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
 
     def embed_fn(text: str) -> list[float]:
         vec = model.encode(text, normalize_embeddings=True)
@@ -202,16 +202,24 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
             # strict retrieval system would return empty, but BM25/vector
             # always return SOMETHING — the question is whether it's all
             # low-confidence filler (i.e. doesn't match any real cluster).
-            adversarial.append({
-                "query_id": q["id"],
-                "query": q["query"],
-                "n_retrieved": len(ranked_ids),
-                "top_content": [
-                    next((n for n in _load(FIXTURES / "eval_neurons.yaml")
-                          if id_map.get(n["id"]) == nid), {}).get("content", "")[:50]
-                    for nid in ranked_ids[:3]
-                ],
-            })
+            adversarial.append(
+                {
+                    "query_id": q["id"],
+                    "query": q["query"],
+                    "n_retrieved": len(ranked_ids),
+                    "top_content": [
+                        next(
+                            (
+                                n
+                                for n in _load(FIXTURES / "eval_neurons.yaml")
+                                if id_map.get(n["id"]) == nid
+                            ),
+                            {},
+                        ).get("content", "")[:50]
+                        for nid in ranked_ids[:3]
+                    ],
+                }
+            )
             continue
 
         if not relevant_db_ids:
@@ -223,22 +231,24 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
         hit_at_10 = _hit_at_k(ranked_ids, relevant_db_ids, k=10)
         ndcg_at_10 = _ndcg_at_k(ranked_ids, relevant_db_ids, k=10)
 
-        per_query.append({
-            "query_id": q["id"],
-            "query": q["query"],
-            "lens": q["lens"],
-            "n_relevant": len(relevant_db_ids),
-            "n_retrieved": len(ranked_ids),
-            "mrr_at_10": mrr,
-            "p_at_5": p_at_5,
-            "hit_at_5": hit_at_5,
-            "hit_at_10": hit_at_10,
-            "ndcg_at_10": ndcg_at_10,
-            "first_hit_rank": next(
-                (i + 1 for i, nid in enumerate(ranked_ids) if nid in relevant_db_ids),
-                None,
-            ),
-        })
+        per_query.append(
+            {
+                "query_id": q["id"],
+                "query": q["query"],
+                "lens": q["lens"],
+                "n_relevant": len(relevant_db_ids),
+                "n_retrieved": len(ranked_ids),
+                "mrr_at_10": mrr,
+                "p_at_5": p_at_5,
+                "hit_at_5": hit_at_5,
+                "hit_at_10": hit_at_10,
+                "ndcg_at_10": ndcg_at_10,
+                "first_hit_rank": next(
+                    (i + 1 for i, nid in enumerate(ranked_ids) if nid in relevant_db_ids),
+                    None,
+                ),
+            }
+        )
         if mrr == 0.0:
             zero_recall.append(q["id"])
 
@@ -253,8 +263,8 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
     print(f"\n{'=' * 72}")
     print("RETRIEVAL BASELINE — P1 #4 (frozen 30-neuron / 20+5-query fixture)")
     print(f"{'=' * 72}")
-    print(f"Stack: BM25Plus + vector (MiniLM-L12) + graph, RRF fusion")
-    print(f"Corpus: 30 neurons across 6 clusters")
+    print("Stack: BM25Plus + vector (MiniLM-L12) + graph, RRF fusion")
+    print("Corpus: 30 neurons across 6 clusters")
     print(f"Real queries: {n} (with non-empty relevance labels)")
     print(f"Adversarial: {len(adversarial)} (should return no corpus hits)")
     print(f"{'-' * 72}")
@@ -263,7 +273,9 @@ async def test_retrieval_baseline_mrr_and_precision(db) -> None:
     print(f"Hit@5:        {avg_hit5:.3f}   ← any relevant in top 5")
     print(f"Hit@10:       {avg_hit10:.3f}   ← any relevant in top 10")
     print(f"P@5:          {avg_p5:.3f}   ← ceiling-bounded, see fixture")
-    print(f"Zero-recall:  {len(zero_recall)}/{n} queries ({100 * len(zero_recall) / n if n else 0:.0f}%)")
+    print(
+        f"Zero-recall:  {len(zero_recall)}/{n} queries ({100 * len(zero_recall) / n if n else 0:.0f}%)"
+    )
     print(f"{'=' * 72}")
     print(f"{'query_id':<8} {'rank':>4} {'mrr':>5} {'hit@5':>5} {'ndcg':>5}   query")
     print(f"{'-' * 72}")

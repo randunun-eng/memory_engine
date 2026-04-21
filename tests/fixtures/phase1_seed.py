@@ -50,9 +50,7 @@ async def seed_phase1_baseline(
     # Create persona
     priv, pub = generate_keypair()
     pub_b64 = base64.b64encode(pub).decode("ascii")
-    cursor = await conn.execute(
-        "INSERT INTO personas (id, slug) VALUES (?, ?)", (1, "alice_twin")
-    )
+    cursor = await conn.execute("INSERT INTO personas (id, slug) VALUES (?, ?)", (1, "alice_twin"))
     await conn.commit()
     persona_id = 1
 
@@ -102,8 +100,13 @@ async def seed_phase1_baseline(
     ]
     for nid, content in self_facts:
         await insert_neuron(
-            conn, neuron_id=nid, persona_id=persona_id, counterparty_id=None,
-            kind="self_fact", content=content, source_event_ids=[event_ids[nid]],
+            conn,
+            neuron_id=nid,
+            persona_id=persona_id,
+            counterparty_id=None,
+            kind="self_fact",
+            content=content,
+            source_event_ids=[event_ids[nid]],
         )
 
     # ---- Alex counterparty facts (IDs 11-20) ----
@@ -122,9 +125,15 @@ async def seed_phase1_baseline(
         t_valid_start = "1992-03-22" if nid == 14 else None
         recorded = "2024-01-01 00:00:00" if nid == 16 else "2025-01-01 00:00:00"
         await insert_neuron(
-            conn, neuron_id=nid, persona_id=persona_id, counterparty_id=1,
-            kind="counterparty_fact", content=content, source_event_ids=[event_ids[nid]],
-            t_valid_start=t_valid_start, superseded_at=superseded_at,
+            conn,
+            neuron_id=nid,
+            persona_id=persona_id,
+            counterparty_id=1,
+            kind="counterparty_fact",
+            content=content,
+            source_event_ids=[event_ids[nid]],
+            t_valid_start=t_valid_start,
+            superseded_at=superseded_at,
             recorded_at=recorded,
         )
 
@@ -141,8 +150,13 @@ async def seed_phase1_baseline(
         superseded_at = "2025-07-01 00:00:00" if nid == 24 else None
         recorded = "2024-06-01 00:00:00" if nid == 24 else "2025-01-01 00:00:00"
         await insert_neuron(
-            conn, neuron_id=nid, persona_id=persona_id, counterparty_id=2,
-            kind="counterparty_fact", content=content, source_event_ids=[event_ids[nid]],
+            conn,
+            neuron_id=nid,
+            persona_id=persona_id,
+            counterparty_id=2,
+            kind="counterparty_fact",
+            content=content,
+            source_event_ids=[event_ids[nid]],
             superseded_at=superseded_at,
             recorded_at=recorded,
         )
@@ -155,8 +169,13 @@ async def seed_phase1_baseline(
     ]
     for nid, content in solar_facts:
         await insert_neuron(
-            conn, neuron_id=nid, persona_id=persona_id, counterparty_id=3,
-            kind="counterparty_fact", content=content, source_event_ids=[event_ids[nid]],
+            conn,
+            neuron_id=nid,
+            persona_id=persona_id,
+            counterparty_id=3,
+            kind="counterparty_fact",
+            content=content,
+            source_event_ids=[event_ids[nid]],
         )
 
     # ---- Job history self facts (IDs 41-50) ----
@@ -169,22 +188,47 @@ async def seed_phase1_baseline(
     ]
     for nid, content in job_facts:
         await insert_neuron(
-            conn, neuron_id=nid, persona_id=persona_id, counterparty_id=None,
-            kind="self_fact", content=content, source_event_ids=[event_ids[nid]],
+            conn,
+            neuron_id=nid,
+            persona_id=persona_id,
+            counterparty_id=None,
+            kind="self_fact",
+            content=content,
+            source_event_ids=[event_ids[nid]],
         )
 
     # ---- Domain facts (IDs 51-56) ----
     domain_facts = [
-        (51, "Maximum Power Point Tracking MPPT algorithms use perturb-and-observe for solar charge controllers"),
-        (52, "Recent research on MPPT shows incremental conductance outperforms P&O in rapidly changing conditions"),
-        (53, "Machine learning approaches to MPPT are gaining traction with reinforcement learning based controllers"),
-        (55, "pgvector supports IVFFlat and HNSW indexes for approximate nearest neighbor search in PostgreSQL"),
-        (56, "sqlite-vec provides vector search for SQLite using virtual tables with cosine and L2 distance metrics"),
+        (
+            51,
+            "Maximum Power Point Tracking MPPT algorithms use perturb-and-observe for solar charge controllers",
+        ),
+        (
+            52,
+            "Recent research on MPPT shows incremental conductance outperforms P&O in rapidly changing conditions",
+        ),
+        (
+            53,
+            "Machine learning approaches to MPPT are gaining traction with reinforcement learning based controllers",
+        ),
+        (
+            55,
+            "pgvector supports IVFFlat and HNSW indexes for approximate nearest neighbor search in PostgreSQL",
+        ),
+        (
+            56,
+            "sqlite-vec provides vector search for SQLite using virtual tables with cosine and L2 distance metrics",
+        ),
     ]
     for nid, content in domain_facts:
         await insert_neuron(
-            conn, neuron_id=nid, persona_id=persona_id, counterparty_id=None,
-            kind="domain_fact", content=content, source_event_ids=[event_ids[nid]],
+            conn,
+            neuron_id=nid,
+            persona_id=persona_id,
+            counterparty_id=None,
+            kind="domain_fact",
+            content=content,
+            source_event_ids=[event_ids[nid]],
         )
 
     # Set superseded_by references now that all neurons exist

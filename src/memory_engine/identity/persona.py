@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -39,8 +39,8 @@ class SelfFact:
 class DeletionPolicy:
     """How deletion/forget requests are handled."""
 
-    inbound: str = "ignore"    # "ignore" or "honor"
-    outbound: str = "honor"    # "ignore" or "honor"
+    inbound: str = "ignore"  # "ignore" or "honor"
+    outbound: str = "honor"  # "ignore" or "honor"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +70,7 @@ class IdentityDocument:
         return len(self.forbidden_topics) > 0
 
 
-def _normalize_rich_to_legacy(data: dict) -> dict:
+def _normalize_rich_to_legacy(data: dict[str, Any]) -> dict[str, Any]:
     """Convert twincore-alpha 'rich' schema to the legacy simple schema
     this parser consumes. See DRIFT `identity-schema-mismatch-twincore-vs-phase4`.
 
@@ -92,7 +92,7 @@ def _normalize_rich_to_legacy(data: dict) -> dict:
     - version: schema_version is a dotted string ("1.0"); take the major
       part as the integer version.
     """
-    out: dict = dict(data)  # preserve unknown keys
+    out: dict[str, Any] = dict(data)  # preserve unknown keys
     # persona / version mapping
     if "persona" not in out and "persona_slug" in data:
         out["persona"] = data["persona_slug"]
@@ -110,7 +110,7 @@ def _normalize_rich_to_legacy(data: dict) -> dict:
 
     # Derive self_facts from role.title + values[] if not already provided.
     if "self_facts" not in out:
-        self_facts: list[dict] = []
+        self_facts: list[dict[str, Any]] = []
         role = data.get("role")
         if isinstance(role, dict) and isinstance(role.get("title"), str):
             self_facts.append({"text": f"I am {role['title']}.", "confidence": 1.0})

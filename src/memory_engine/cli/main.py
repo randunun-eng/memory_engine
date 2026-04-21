@@ -95,11 +95,13 @@ def quarantine_list(persona_id: int | None, limit: int, reason: str | None) -> N
             if reason:
                 where.append("reason = ?")
                 params.append(reason)
+            # `where` is built from hardcoded string literals in this
+            # module — no user input reaches the WHERE fragment. All
+            # parameters bind via `params` below. Safe per-review.
+            where_clause = " AND ".join(where)
             sql = (
-                "SELECT id, persona_id, reason, candidate_json, created_at "
-                "FROM quarantine_neurons "
-                f"WHERE {' AND '.join(where)} "
-                "ORDER BY id DESC LIMIT ?"
+                f"SELECT id, persona_id, reason, candidate_json, created_at "  # noqa: S608
+                f"FROM quarantine_neurons WHERE {where_clause} ORDER BY id DESC LIMIT ?"
             )
             params.append(limit)
             cursor = await conn.execute(sql, tuple(params))
@@ -107,9 +109,7 @@ def quarantine_list(persona_id: int | None, limit: int, reason: str | None) -> N
             if not rows:
                 click.echo("(no quarantine entries)")
                 return
-            click.echo(
-                f"{'id':>6} {'persona':>3} {'reason':<20} {'created_at':<20}  content"
-            )
+            click.echo(f"{'id':>6} {'persona':>3} {'reason':<20} {'created_at':<20}  content")
             click.echo("-" * 100)
             for row in rows:
                 try:
@@ -165,9 +165,7 @@ def quarantine_show(quarantine_id: int) -> None:
             event_ids = _json.loads(row["source_event_ids"])
             click.echo(f"  source_event_ids: {event_ids}")
             for eid in event_ids:
-                ec = await conn.execute(
-                    "SELECT id, payload FROM events WHERE id = ?", (eid,)
-                )
+                ec = await conn.execute("SELECT id, payload FROM events WHERE id = ?", (eid,))
                 er = await ec.fetchone()
                 if er:
                     try:
@@ -210,9 +208,7 @@ def quarantine_promote(quarantine_id: int, tier: str) -> None:
                 click.echo(f"No quarantine entry {quarantine_id}")
                 return
             if row["reviewed_at"]:
-                click.echo(
-                    f"Already reviewed ({row['review_verdict']}) at {row['reviewed_at']}"
-                )
+                click.echo(f"Already reviewed ({row['review_verdict']}) at {row['reviewed_at']}")
                 return
 
             cand = _json.loads(row["candidate_json"])
@@ -247,9 +243,16 @@ def quarantine_promote(quarantine_id: int, tier: str) -> None:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    row["persona_id"], counterparty_id, kind, content, content_hash,
-                    row["source_event_ids"], len(source_event_ids),
-                    len(set(source_event_ids)), tier, embedder_rev,
+                    row["persona_id"],
+                    counterparty_id,
+                    kind,
+                    content,
+                    content_hash,
+                    row["source_event_ids"],
+                    len(source_event_ids),
+                    len(set(source_event_ids)),
+                    tier,
+                    embedder_rev,
                 ),
             )
             await conn.commit()

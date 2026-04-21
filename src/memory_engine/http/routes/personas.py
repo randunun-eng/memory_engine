@@ -39,7 +39,9 @@ async def create_persona(req: CreatePersonaRequest) -> CreatePersonaResponse:
         pid = cursor.lastrowid
         assert pid is not None
         return CreatePersonaResponse(
-            id=int(pid), slug=req.slug, owner_public_key=req.owner_public_key,
+            id=int(pid),
+            slug=req.slug,
+            owner_public_key=req.owner_public_key,
         )
     finally:
         await conn.close()

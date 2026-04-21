@@ -55,10 +55,12 @@ class WhatsAppEnvelope:
     signing and posting to /v1/ingest.
     """
 
-    external_ref: str           # phone number or group JID (raw, will be canonicalized)
-    content: str                # text content of the message
-    wa_message_id: str          # WhatsApp message ID (used as idempotency key)
-    timestamp: str | None = None  # MCP-reported timestamp (informational; server time is authoritative)
+    external_ref: str  # phone number or group JID (raw, will be canonicalized)
+    content: str  # text content of the message
+    wa_message_id: str  # WhatsApp message ID (used as idempotency key)
+    timestamp: str | None = (
+        None  # MCP-reported timestamp (informational; server time is authoritative)
+    )
     sender_hint: str | None = None  # for group messages: individual sender's phone
     display_name_hint: str | None = None  # contact or group name from WhatsApp
     forwarded_from: str | None = None  # original sender if forwarded
@@ -136,9 +138,7 @@ async def ingest_whatsapp_message(
     # Step 4: Check tombstones
     tombstoned = await _check_tombstones(conn, persona_id, canonical_ref, envelope)
     if tombstoned:
-        raise IdempotencyConflict(
-            f"Message blocked by tombstone for {canonical_ref}"
-        )
+        raise IdempotencyConflict(f"Message blocked by tombstone for {canonical_ref}")
 
     # Step 5: Build event payload
     payload = _build_payload(envelope, canonical_ref, is_group)

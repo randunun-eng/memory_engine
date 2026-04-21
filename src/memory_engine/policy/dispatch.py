@@ -114,7 +114,10 @@ class PolicyDispatch:
 
         logger.info(
             "dispatch site=%s persona=%d latency=%.1fms model=%s",
-            site, persona_id, elapsed_ms, self._model,
+            site,
+            persona_id,
+            elapsed_ms,
+            self._model,
         )
 
         # 5. Parse the response
@@ -146,9 +149,7 @@ def _parse_response(
             result: dict[str, Any] = parser(raw)
             return result
         except Exception as e:
-            raise LLMResponseParseError(
-                f"Custom parser failed for site={site!r}: {e}"
-            ) from e
+            raise LLMResponseParseError(f"Custom parser failed for site={site!r}: {e}") from e
 
     # Default: tolerate reasoning-model noise, then parse JSON.
     # Gemma-4 (and other thinking-enabled models) prefix responses with
@@ -169,7 +170,7 @@ def _parse_response(
                 # Unclosed tag — drop everything from the open tag onward.
                 text = text[:start].strip()
                 break
-            text = (text[:start] + text[end + len(close):]).strip()
+            text = (text[:start] + text[end + len(close) :]).strip()
             lower = text.lower()
 
     # 2. Strip markdown fences.

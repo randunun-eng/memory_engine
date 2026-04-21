@@ -30,7 +30,7 @@ async def main() -> None:
     )
     await conn.commit()
     persona_id = cursor.lastrowid
-    assert persona_id is not None  # noqa: S101
+    assert persona_id is not None
 
     # Append 10 events
     event_ids: list[int] = []
@@ -50,16 +50,16 @@ async def main() -> None:
             idempotency_key=f"demo-{i}",
         )
         event_ids.append(event.id)
-        print(f"Appended event {event.id}: hash={event.content_hash[:16]}...")  # noqa: T201
+        print(f"Appended event {event.id}: hash={event.content_hash[:16]}...")
 
     # Read them back
     for eid in event_ids:
         retrieved = await get_event(conn, eid)
-        assert retrieved is not None  # noqa: S101
-        print(f"  {eid}: {retrieved.payload['text']!r}")  # noqa: T201
+        assert retrieved is not None
+        print(f"  {eid}: {retrieved.payload['text']!r}")
 
     await conn.close()
-    print(f"\nRound-trip OK. {len(event_ids)} events written and retrieved.")  # noqa: T201
+    print(f"\nRound-trip OK. {len(event_ids)} events written and retrieved.")
 
 
 if __name__ == "__main__":

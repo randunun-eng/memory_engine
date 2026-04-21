@@ -107,7 +107,10 @@ async def _full_ingest(
         image_ref=image_ref,
     )
     sig = _sign_envelope(
-        envelope, persona.id, persona.private_key, is_group=is_group,
+        envelope,
+        persona.id,
+        persona.private_key,
+        is_group=is_group,
     )
     return await ingest_whatsapp_message(
         db,
@@ -229,7 +232,9 @@ async def test_phone_variants_create_one_counterparty(db: aiosqlite.Connection) 
     # Ingest with different phone formats — should all map to same counterparty
     for i, phone in enumerate(["+94 77 123 4567", "+94-77-123-4567", "+94771234567"]):
         result = await _full_ingest(
-            db, persona, token,
+            db,
+            persona,
+            token,
             external_ref=phone,
             content=f"Message {i}",
             wa_message_id=f"msg_variant_{i}",
@@ -254,7 +259,9 @@ async def test_group_becomes_counterparty(db: aiosqlite.Connection) -> None:
     _, token = await _register_mcp_for_persona(db, persona.id, persona.public_key_b64)
 
     result = await _full_ingest(
-        db, persona, token,
+        db,
+        persona,
+        token,
         external_ref="1234567890-1699999999@g.us",
         content="Group message",
         wa_message_id="grp_001",
@@ -277,7 +284,9 @@ async def test_sender_hint_stored_but_not_queried(db: aiosqlite.Connection) -> N
     _, token = await _register_mcp_for_persona(db, persona.id, persona.public_key_b64)
 
     result = await _full_ingest(
-        db, persona, token,
+        db,
+        persona,
+        token,
         external_ref="1234567890-1699999999@g.us",
         content="Alice in group",
         wa_message_id="grp_alice",
@@ -324,7 +333,9 @@ async def test_forwarded_message_attributes_to_forwarder(db: aiosqlite.Connectio
     _, token = await _register_mcp_for_persona(db, persona.id, persona.public_key_b64)
 
     result = await _full_ingest(
-        db, persona, token,
+        db,
+        persona,
+        token,
         external_ref="+94771111111",
         content="Forwarded content from someone else",
         wa_message_id="fwd_001",
@@ -360,7 +371,9 @@ async def test_image_ref_stored_in_payload(db: aiosqlite.Connection) -> None:
     _, token = await _register_mcp_for_persona(db, persona.id, persona.public_key_b64)
 
     result = await _full_ingest(
-        db, persona, token,
+        db,
+        persona,
+        token,
         content="Check out this photo",
         wa_message_id="img_001",
         image_ref="vault://images/abc123.enc",
@@ -456,14 +469,19 @@ async def test_outbound_blocked_no_event(db: aiosqlite.Connection) -> None:
 
     # Set up identity with non-negotiables
     from memory_engine.identity.persona import save_identity
-    await save_identity(db, persona.id, """\
+
+    await save_identity(
+        db,
+        persona.id,
+        """\
 persona: test
 version: 1
 signed_by: test@example.org
 signed_at: 2026-04-16T10:00:00Z
 non_negotiables:
   - "I never disclose personal email or phone number."
-""")
+""",
+    )
 
     cursor = await db.execute(
         "INSERT INTO counterparties (persona_id, external_ref, display_name) VALUES (?, ?, ?)",
