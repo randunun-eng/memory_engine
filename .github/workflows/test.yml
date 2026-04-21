@@ -80,11 +80,14 @@ jobs:
       - name: Sync dependencies
         run: uv sync --all-extras
 
-      - name: Every governance rule has an invariant test
+      - name: All governance-rule invariant tests pass
         run: |
-          # This calls the meta-invariant that asserts every rule 1..16
-          # has at least one registered invariant check.
-          uv run pytest tests/invariants/test_all_rules_have_invariants.py -v
+          # Phase-by-phase invariant tests assert the 16 governance rules.
+          # The job name is retained from an earlier design that had a
+          # single meta-test (test_all_rules_have_invariants.py) — that
+          # file was never created; the invariant coverage lives in each
+          # tests/invariants/test_phaseN.py.
+          uv run pytest tests/invariants/ -v
 
       - name: No LLM call sites outside policy/dispatch
         run: |
