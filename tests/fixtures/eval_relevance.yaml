@@ -73,6 +73,9 @@
   relevant_ids:
   - n021
   - n024
+  - n025
+  - n045
+  - n088
 - query_id: q15
   query: where do I live
   lens: self
@@ -88,26 +91,33 @@
   lens: domain
   relevant_ids:
   - n026
+  - n041
+  - n050
 - query_id: q18
   query: SQLite WAL concurrency
   lens: domain
   relevant_ids:
   - n027
   - n028
+  - n045
+  - n067
 - query_id: q19
   query: docker sqlite bind mount issues
   lens: domain
   relevant_ids:
   - n027
   - n028
+  - n045
+  - n067
 - query_id: q20
   query: multilingual sentence embeddings
   lens: domain
   relevant_ids:
   - n029
-# Adversarial queries — ground-truth relevance is always the empty set.
-# Appended by hand; regenerate with build_eval_relevance.py only if the
-# corpus itself is extended to cover these topics.
+  - n082
+  - n083
+  - n084
+  - n085
 - query_id: q_adv_01
   query: quantum computing algorithms
   lens: auto
@@ -128,3 +138,162 @@
   query: stock market analysis techniques
   lens: auto
   relevant_ids: []
+- query_id: q21
+  query: Kandy perahera
+  lens: auto
+  relevant_ids:
+  - n031
+  - n040
+- query_id: q22
+  query: who built Sigiriya
+  lens: auto
+  relevant_ids:
+  - n032
+- query_id: q23
+  query: Kandy to Ella train
+  lens: auto
+  relevant_ids:
+  - n033
+- query_id: q24
+  query: best surfing season in Sri Lanka
+  lens: auto
+  relevant_ids:
+  - n035
+- query_id: q25
+  query: leopards in Yala
+  lens: auto
+  relevant_ids:
+  - n036
+- query_id: q26
+  query: what is our BM25 algorithm
+  lens: auto
+  relevant_ids:
+  - n026
+  - n041
+  - n050
+- query_id: q27
+  query: consolidator tick frequency
+  lens: auto
+  relevant_ids:
+  - n042
+- query_id: q28
+  query: which phase are we in
+  lens: auto
+  relevant_ids:
+  - n043
+- query_id: q29
+  query: grounding gate threshold
+  lens: auto
+  relevant_ids:
+  - n044
+  - n090
+- query_id: q30
+  query: why we moved off bind mounts
+  lens: auto
+  relevant_ids:
+  - n027
+  - n028
+  - n045
+  - n067
+- query_id: q31
+  query: what is pol sambol
+  lens: auto
+  relevant_ids:
+  - n051
+- query_id: q32
+  query: kiribath occasion
+  lens: auto
+  relevant_ids:
+  - n052
+- query_id: q33
+  query: how are hoppers made
+  lens: auto
+  relevant_ids:
+  - n053
+- query_id: q34
+  query: watalappam ingredient
+  lens: auto
+  relevant_ids:
+  - n057
+- query_id: q35
+  query: kottu street food
+  lens: auto
+  relevant_ids:
+  - n054
+- query_id: q36
+  query: what is RRF fusion
+  lens: domain
+  relevant_ids:
+  - n050
+  - n061
+- query_id: q37
+  query: sqlite vector extension
+  lens: domain
+  relevant_ids:
+  - n062
+- query_id: q38
+  query: FastAPI validation library
+  lens: domain
+  relevant_ids:
+  - n063
+- query_id: q39
+  query: what does NDCG reward
+  lens: domain
+  relevant_ids:
+  - n064
+- query_id: q40
+  query: whatsmeow protocol implementation
+  lens: domain
+  relevant_ids:
+  - n065
+- query_id: q41
+  query: what do I drink in the morning
+  lens: self
+  relevant_ids:
+  - n071
+- query_id: q42
+  query: my musical hobby
+  lens: self
+  relevant_ids:
+  - n073
+- query_id: q43
+  query: where did babi study
+  lens: auto
+  relevant_ids:
+  - n009
+  - n076
+- query_id: q44
+  query: babi allergies
+  lens: auto
+  relevant_ids:
+  - n078
+- query_id: q45
+  query: babi favourite music
+  lens: auto
+  relevant_ids:
+  - n079
+- query_id: q46
+  query: ed25519 signature length
+  lens: domain
+  relevant_ids:
+  - n081
+- query_id: q47
+  query: cosine similarity range
+  lens: domain
+  relevant_ids:
+  - n082
+- query_id: q48
+  query: when was BERT released
+  lens: domain
+  relevant_ids:
+  - n084
+- query_id: q49
+  query: what was the first MVP demo draft
+  lens: auto
+  relevant_ids:
+  - n087
+- query_id: q50
+  query: why did we leave Gemma-4
+  lens: auto
+  relevant_ids:
+  - n088

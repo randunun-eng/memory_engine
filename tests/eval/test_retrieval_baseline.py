@@ -40,8 +40,8 @@ async def _seed_corpus(db, persona, embed_fn) -> dict[str, int]:
     Returns fixture_id → db neuron_id mapping so the relevance set can
     be translated to DB primary keys at scoring time.
     """
-    # Insert counterparties that the fixtures reference. Cp ids 1-4.
-    for cp_id in range(1, 5):
+    # Insert counterparties that the fixtures reference. Corpus v2 uses cp ids 1-7.
+    for cp_id in range(1, 8):
         await db.execute(
             "INSERT OR IGNORE INTO counterparties (id, persona_id, external_ref) VALUES (?, ?, ?)",
             (cp_id, persona.id, f"whatsapp:+fixture{cp_id}"),
