@@ -21,13 +21,16 @@ is caught immediately.
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock
 
 import aiosqlite
 import pytest
 
 from memory_engine.http.lifespan import _consolidation_loop, _run_integrity_check
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 pytestmark = pytest.mark.asyncio
 
@@ -39,9 +42,7 @@ async def clean_db(tmp_path: Path) -> aiosqlite.Connection:
     conn = await aiosqlite.connect(str(db_path))
     conn.row_factory = aiosqlite.Row
     await conn.execute("PRAGMA journal_mode = WAL")
-    await conn.execute(
-        "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)"
-    )
+    await conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)")
     # Write enough rows to make sure SQLite has allocated multiple pages
     for i in range(200):
         await conn.execute("INSERT INTO t (v) VALUES (?)", (f"row-{i}" * 20,))
@@ -51,9 +52,13 @@ async def clean_db(tmp_path: Path) -> aiosqlite.Connection:
 
 
 @pytest.fixture
-async def corrupt_db_path(tmp_path: Path) -> Path:
+def corrupt_db_path(tmp_path: Path) -> Path:
     """Create a valid DB, close it, then overwrite a page header with
-    zeros to induce a malformed-page error on integrity_check."""
+    zeros to induce a malformed-page error on integrity_check.
+
+    Sync fixture — no async work here, just file manipulation. Making
+    it sync sidesteps ruff ASYNC230 (blocking open() inside async def).
+    """
     db_path = tmp_path / "integrity_corrupt.db"
 
     # Build a valid DB first
@@ -67,14 +72,15 @@ async def corrupt_db_path(tmp_path: Path) -> Path:
     # Overwrite bytes in page 2 (pages are 4096 bytes; page 1 is header,
     # page 2 is the first table-data page). Zeroing 32 bytes in the page
     # header reliably produces 'database disk image is malformed'.
-    with open(db_path, "r+b") as f:
-        f.seek(4096)       # start of page 2
+    with db_path.open("r+b") as f:
+        f.seek(4096)  # start of page 2
         f.write(b"\x00" * 32)
 
     return db_path
 
 
 # ---- Test 1: clean DB returns (True, "ok") ----
+
 
 async def test_integrity_check_ok_on_clean_db(clean_db) -> None:
     ok, detail = await _run_integrity_check(clean_db)
@@ -83,6 +89,7 @@ async def test_integrity_check_ok_on_clean_db(clean_db) -> None:
 
 
 # ---- Test 2: corrupt DB is detected ----
+
 
 async def test_integrity_check_detects_corruption(corrupt_db_path: Path) -> None:
     # Open the deliberately-corrupted DB with the same flags the prod
@@ -104,6 +111,7 @@ async def test_integrity_check_detects_corruption(corrupt_db_path: Path) -> None
 
 
 # ---- Test 3: loop halts (does NOT call consolidation_pass) on bad integrity ----
+
 
 async def test_loop_halts_on_integrity_failure(monkeypatch) -> None:
     """When integrity_check fails, _consolidation_loop must NOT run
@@ -139,6 +147,7 @@ async def test_loop_halts_on_integrity_failure(monkeypatch) -> None:
     async def one_tick_sleep(_secs):
         tick_count["n"] += 1
         import asyncio
+
         if tick_count["n"] >= 1:
             raise asyncio.CancelledError
         await original_sleep(_secs)
@@ -150,6 +159,7 @@ async def test_loop_halts_on_integrity_failure(monkeypatch) -> None:
 
     import asyncio
     import base64
+
     from nacl.signing import SigningKey
 
     signer = SigningKey.generate()
@@ -172,11 +182,12 @@ async def test_loop_halts_on_integrity_failure(monkeypatch) -> None:
 
 # ---- Test 4: recovery flips gauge back to 1 ----
 
+
 async def test_integrity_recovers_on_clean_db(clean_db) -> None:
     """After a failing check, a subsequent check on a clean DB returns
     ok — the gauge state is not sticky, each tick checks fresh."""
     # First, simulate a failure
-    bad, _ = await _run_integrity_check(clean_db)  # will be ok actually
+    _bad, _ = await _run_integrity_check(clean_db)  # will be ok actually
     # Now assert the real check returns ok
     ok, detail = await _run_integrity_check(clean_db)
     assert ok is True
