@@ -22,7 +22,6 @@ See DRIFT `chat-context-first-class-primitive`.
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -37,14 +36,14 @@ router = APIRouter()
 class ChatContextRequest(BaseModel):
     persona_slug: str
     counterparty_external_ref: str
-    query: str | None = None              # optional — drives recall ranking
+    query: str | None = None  # optional — drives recall ranking
     recent_limit: int = Field(default=20, ge=0, le=100)
     voice_limit: int = Field(default=15, ge=0, le=100)
     top_k: int = Field(default=10, ge=0, le=50)
 
 
 class RecentMessage(BaseModel):
-    role: str                              # "them" or "me"
+    role: str  # "them" or "me"
     text: str
     ts: str
     event_type: str
@@ -90,9 +89,7 @@ def _extract_text(payload_raw: str) -> str:
 
 
 @router.post("/chat_context", response_model=ChatContextResponse)
-async def chat_context_endpoint(
-    req: ChatContextRequest, request: Request
-) -> ChatContextResponse:
+async def chat_context_endpoint(req: ChatContextRequest, request: Request) -> ChatContextResponse:
     """Return the complete per-chat memory bundle.
 
     Rule 12 enforcement: every read is filtered by `counterparty_id = ?`
@@ -101,14 +98,10 @@ async def chat_context_endpoint(
     conn = await connect()
     try:
         # Resolve persona slug → id
-        cursor = await conn.execute(
-            "SELECT id FROM personas WHERE slug = ?", (req.persona_slug,)
-        )
+        cursor = await conn.execute("SELECT id FROM personas WHERE slug = ?", (req.persona_slug,))
         row = await cursor.fetchone()
         if row is None:
-            raise HTTPException(
-                status_code=404, detail=f"Persona {req.persona_slug!r} not found"
-            )
+            raise HTTPException(status_code=404, detail=f"Persona {req.persona_slug!r} not found")
         persona_id = int(row["id"])
 
         # Resolve counterparty external_ref → id (may be None if unknown)
@@ -198,10 +191,12 @@ async def chat_context_endpoint(
                             created_at=str(row["created_at"]),
                         )
                     )
-            except Exception:
+            except Exception as e:
                 # episodes.counterparty_id may not exist on older DBs —
                 # migration 009 is additive but we stay graceful.
-                pass
+                import logging as _logging
+
+                _logging.getLogger(__name__).debug("episodes query skipped: %s", e)
 
         # --- top_neurons (via recall if query given, else distinct-source-rank) ---
         top_neurons: list[NeuronResult] = []
@@ -215,7 +210,8 @@ async def chat_context_endpoint(
                     try:
                         query_embedding = list(embed_fn(req.query))
                         embedder_rev = getattr(
-                            request.app.state, "embedder_rev",
+                            request.app.state,
+                            "embedder_rev",
                             "paraphrase-multilingual-minilm-l12-v2-1",
                         )
                     except Exception:
