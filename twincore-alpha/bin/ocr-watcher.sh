@@ -25,8 +25,13 @@ mkdir -p "${LOG_DIR}"
 
 ENV_FILE="${ENV_FILE:-${HOME}/Memory_engine/twincore-alpha/.env}"
 OCR_SCRIPT="${HOME}/Memory_engine/twincore-alpha/bin/ocr-backfill.py"
-OCR_INTERVAL_SEC="${OCR_INTERVAL_SEC:-300}"
-OCR_BATCH="${OCR_BATCH:-20}"
+# Defaults raised after the GCP cost spike on 2026-04-21/22 ($251 in 2
+# days, mostly from sustained Gemini Flash text generation including
+# OCR descriptions). 30-min poll + 10-image batches caps the OCR call
+# rate at ~480/day ≈ $1-2/day rather than 5760/day. Tune lower if you
+# need fresher image context, but watch billing.
+OCR_INTERVAL_SEC="${OCR_INTERVAL_SEC:-1800}"
+OCR_BATCH="${OCR_BATCH:-10}"
 
 # Load secrets from .env (GEMINI_API_KEY, MEMORY_ENGINE_MCP_PRIVATE_KEY).
 if [[ -f "${ENV_FILE}" ]]; then

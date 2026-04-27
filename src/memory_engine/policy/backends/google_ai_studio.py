@@ -84,8 +84,44 @@ class AIStudioRateLimiter:
         logger.warning("ai_studio[consolidator] 429 observed, backing off %.1fs", wait)
 
 
+# Per-token pricing for cost estimation (USD per token, premium-tier as
+# observed in actual GCP billing 2026-04). Update if your tier differs.
+# Falls back to flash pricing for unknown models.
+GEMINI_PRICING: dict[str, tuple[float, float]] = {
+    # model: (input_per_token, output_per_token)
+    "gemini-2.5-flash": (0.000_000_075, 0.000_002_500),
+    "gemini-2.5-flash-lite": (0.000_000_040, 0.000_000_150),
+    "gemini-2.5-pro": (0.000_001_250, 0.000_010_000),
+    "gemini-3-flash": (0.000_000_075, 0.000_002_500),
+    "gemini-3.1-flash-lite": (0.000_000_040, 0.000_000_150),
+    "gemma-4-31b-it": (0.000_000_075, 0.000_002_500),  # treated as Flash-tier
+}
+
+
+def _estimate_cost_usd(model: str, usage: dict[str, int]) -> float:
+    """Estimate USD cost from a Gemini API response's `usage` block."""
+    inp_per, out_per = GEMINI_PRICING.get(model, GEMINI_PRICING["gemini-2.5-flash"])
+    # OpenAI-compat field names: prompt_tokens, completion_tokens
+    inp = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+    out = int(usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+    return inp * inp_per + out * out_per
+
+
+class BudgetExceededError(RuntimeError):
+    """Raised when the configured monthly LLM budget is exhausted."""
+
+
 class GoogleAIStudioBackend:
-    """Async callable matching PolicyDispatch's LLMBackend signature."""
+    """Async callable matching PolicyDispatch's LLMBackend signature.
+
+    Tracks estimated USD spend per request via the response's `usage`
+    block. Exposes:
+      - .total_cost_usd    : cumulative cost since process start
+      - .calls             : total successful API calls
+      - .max_output_tokens : per-call output cap (default 1024)
+
+    The dispatch layer reads .total_cost_usd to enforce monthly_budget_usd.
+    """
 
     def __init__(
         self,
@@ -95,11 +131,15 @@ class GoogleAIStudioBackend:
         max_rpm: int = 6,
         warn_rpm: int = 4,
         timeout_s: float = 120.0,
+        max_output_tokens: int = 1024,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._limiter = AIStudioRateLimiter(max_rpm=max_rpm, warn_rpm=warn_rpm)
         self._client = httpx.AsyncClient(timeout=timeout_s)
+        self.max_output_tokens = max_output_tokens
+        self.total_cost_usd: float = 0.0
+        self.calls: int = 0
 
     async def __call__(self, model: str, prompt: str, temperature: float) -> str:
         # Strip "gemini/" or "google/" prefix if a routing alias slipped through.
@@ -123,6 +163,10 @@ class GoogleAIStudioBackend:
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": temperature,
                         "response_format": {"type": "json_object"},
+                        # Cap output to bound cost. Default 1024 covers
+                        # typical extraction (10 claims) + grounding judges.
+                        # See DRIFT `gcp-cost-spike-2026-04`.
+                        "max_tokens": self.max_output_tokens,
                     },
                 )
             except httpx.RequestError as e:
@@ -162,6 +206,23 @@ class GoogleAIStudioBackend:
         content: str = choices[0].get("message", {}).get("content", "").strip()
         if not content:
             raise RuntimeError("ai_studio returned empty content")
+
+        # Cost accounting. The OpenAI-compat endpoint returns usage with
+        # prompt_tokens / completion_tokens. Fall back to 0 if absent.
+        usage = data.get("usage") or {}
+        cost = _estimate_cost_usd(model, usage)
+        self.total_cost_usd += cost
+        self.calls += 1
+        if self.calls % 100 == 1 or cost > 0.01:
+            logger.info(
+                "ai_studio cost: this_call=$%.4f total=$%.2f calls=%d (in=%s out=%s model=%s)",
+                cost,
+                self.total_cost_usd,
+                self.calls,
+                usage.get("prompt_tokens", "?"),
+                usage.get("completion_tokens", "?"),
+                model,
+            )
         return content
 
     async def aclose(self) -> None:

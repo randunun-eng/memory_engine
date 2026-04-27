@@ -29,6 +29,12 @@ from memory_engine.exceptions import (
     PromptNotFound,
 )
 
+
+class BudgetExceededError(DispatchError):
+    """Raised when cumulative LLM spend exceeds the configured monthly cap.
+    See PolicyDispatch.monthly_budget_usd."""
+
+
 if TYPE_CHECKING:
     from memory_engine.policy.cache import PromptCache
     from memory_engine.policy.registry import PromptRegistry
@@ -86,6 +92,18 @@ class PolicyDispatch:
             DispatchError: LLM call failed.
             LLMResponseParseError: Response couldn't be parsed.
         """
+        # 0. Hard budget check — refuse the call if cumulative backend
+        # spend exceeds monthly_budget_usd. Backends with no cost
+        # tracking (mocks, ollama) report 0.0 → no budget pressure.
+        if self._monthly_budget_usd > 0:
+            backend_total = float(getattr(self._llm, "total_cost_usd", 0.0))
+            if backend_total >= self._monthly_budget_usd:
+                raise BudgetExceededError(
+                    f"LLM spend ${backend_total:.2f} >= "
+                    f"monthly_budget_usd ${self._monthly_budget_usd:.2f} — "
+                    f"refusing site={site!r} until budget reset"
+                )
+
         # 1. Resolve the active prompt template
         template = self._registry.get_active(site)
         if template is None:

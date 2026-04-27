@@ -330,17 +330,33 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
         logger.info("env OK — starting consolidator loop")
         registry = PromptRegistry()
         registry.load_from_directory()
-        cache = PromptCache()
+        # Increased cache size — was 256 default, but the consolidator
+        # produces ~16 events per tick * 1440 ticks/day = 23K unique
+        # input hashes/day. 256 churns instantly. 4096 covers ~3-4 hours
+        # of typical traffic, so reruns of the same batch (after a
+        # restart, or when grounding gate rejects then re-asks) hit cache.
+        cache = PromptCache(max_size=4096)
+        # Cap per-call output to bound cost (default 1024 tokens). Set
+        # via env if you need richer extractions.
+        max_output = int(os.environ.get("MEMORY_ENGINE_LLM_MAX_OUTPUT_TOKENS", "1024"))
         backend = GoogleAIStudioBackend(
             api_key=api_key,
             max_rpm=max_rpm,
             warn_rpm=warn_rpm,
+            max_output_tokens=max_output,
         )
+        # Hard monthly budget — when exceeded, dispatch raises
+        # BudgetExceeded and consolidator skips the tick (next tick
+        # tries again, which still fails until cumulative cost is
+        # reset, e.g. by restart). Default $10/month for memory_engine
+        # alone. After the GCP $251 spike, this is a guardrail.
+        budget = float(os.environ.get("MEMORY_ENGINE_LLM_MONTHLY_BUDGET_USD", "10"))
         dispatch = PolicyDispatch(
             registry=registry,
             llm_backend=backend,
             cache=cache,
             model=model,
+            monthly_budget_usd=budget,
         )
         embedder = await _get_embedder()
         embed_fn = _build_embed_fn(embedder)
