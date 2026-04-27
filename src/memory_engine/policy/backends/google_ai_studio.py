@@ -132,12 +132,22 @@ class GoogleAIStudioBackend:
         warn_rpm: int = 4,
         timeout_s: float = 120.0,
         max_output_tokens: int = 1024,
+        service_tier: str | None = None,
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._limiter = AIStudioRateLimiter(max_rpm=max_rpm, warn_rpm=warn_rpm)
         self._client = httpx.AsyncClient(timeout=timeout_s)
         self.max_output_tokens = max_output_tokens
+        # Service tier: None=Standard (full price), "flex"=50% off
+        # (best-effort, sheddable; 1-15 min latency target). Flex is right
+        # for background work (consolidator extraction, grounding judge).
+        # Use Standard for user-facing paths (twin-agent drafts).
+        self.service_tier = service_tier
+        # Cost discount factor applied when reporting back. Gemini bills
+        # at the same SKU price; only the post-call billing reconciles
+        # the 50% Flex discount. Track at standard rates to stay
+        # conservative on the budget cap.
         self.total_cost_usd: float = 0.0
         self.calls: int = 0
 
@@ -163,10 +173,8 @@ class GoogleAIStudioBackend:
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": temperature,
                         "response_format": {"type": "json_object"},
-                        # Cap output to bound cost. Default 1024 covers
-                        # typical extraction (10 claims) + grounding judges.
-                        # See DRIFT `gcp-cost-spike-2026-04`.
                         "max_tokens": self.max_output_tokens,
+                        **({"service_tier": self.service_tier} if self.service_tier else {}),
                     },
                 )
             except httpx.RequestError as e:

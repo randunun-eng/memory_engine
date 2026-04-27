@@ -339,11 +339,17 @@ async def consolidator_lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Cap per-call output to bound cost (default 1024 tokens). Set
         # via env if you need richer extractions.
         max_output = int(os.environ.get("MEMORY_ENGINE_LLM_MAX_OUTPUT_TOKENS", "1024"))
+        # Consolidator runs in the background (60s tick, sheddable mins
+        # of latency are fine). Flex tier = 50% discount, occasional
+        # 429-shed on capacity pressure (we already retry). Set tier=
+        # standard for user-facing paths.
+        service_tier = os.environ.get("MEMORY_ENGINE_LLM_SERVICE_TIER", "flex") or None
         backend = GoogleAIStudioBackend(
             api_key=api_key,
             max_rpm=max_rpm,
             warn_rpm=warn_rpm,
             max_output_tokens=max_output,
+            service_tier=service_tier,
         )
         # Hard monthly budget — when exceeded, dispatch raises
         # BudgetExceeded and consolidator skips the tick (next tick
